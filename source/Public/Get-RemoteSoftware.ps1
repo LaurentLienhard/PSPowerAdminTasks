@@ -54,7 +54,7 @@
                 # Check if path exists (crucial for older 32-bit OS or specific configs)
                 if (Test-Path $Path) {
                     Get-ItemProperty $Path -ErrorAction SilentlyContinue |
-                    Where-Object { $_.DisplayName -ne $null } |
+                    Where-Object { $null -eq $_.DisplayName } |
                     ForEach-Object {
                         $Results += [PSCustomObject]@{
                             ComputerName = $env:COMPUTERNAME
