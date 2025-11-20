@@ -41,33 +41,18 @@
     )
 
     BEGIN {
+        # Get the function definition to send to remote computers
+        $FunctionDefinition = ${function:Get-LocalSoftwareInventory}.ToString()
+
         # Define the script block to run on remote machines once
         $ScriptBlock = {
-            $UninstallPaths = @(
-                "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
-                "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
-            )
+            param($FunctionDef)
 
-            $Results = @()
+            # Define the function in the remote session
+            ${function:Get-LocalSoftwareInventory} = [ScriptBlock]::Create($FunctionDef)
 
-            foreach ($Path in $UninstallPaths) {
-                # Check if path exists (crucial for older 32-bit OS or specific configs)
-                if (Test-Path $Path) {
-                    Get-ItemProperty $Path -ErrorAction SilentlyContinue |
-                    Where-Object { $null -eq $_.DisplayName } |
-                    ForEach-Object {
-                        $Results += [PSCustomObject]@{
-                            ComputerName = $env:COMPUTERNAME
-                            Name         = $_.DisplayName
-                            Version      = $_.DisplayVersion
-                            Publisher    = $_.Publisher
-                            InstallDate  = $_.InstallDate
-                            Architecture = if ($Path -like "*Wow6432Node*") {"32-bit"} else {"64-bit"}
-                        }
-                    }
-                }
-            }
-            return $Results
+            # Execute the function
+            Get-LocalSoftwareInventory
         }
     }
 
@@ -78,6 +63,7 @@
             $InvokeParams = @{
                 ComputerName = $Computer
                 ScriptBlock  = $ScriptBlock
+                ArgumentList = $FunctionDefinition
                 ErrorAction  = 'Stop'
             }
 
