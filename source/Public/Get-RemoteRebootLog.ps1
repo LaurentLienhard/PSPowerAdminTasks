@@ -1,4 +1,4 @@
-function Get-RemoteRebootLog {
+﻿function Get-RemoteRebootLog {
     <#
     .SYNOPSIS
         Récupère les logs de reboot d'un serveur distant.
@@ -100,11 +100,11 @@ function Get-RemoteRebootLog {
                 Write-Verbose "Trouvé $($events.Count) événement(s) de reboot sur $computer"
 
                 # Traitement et affichage des événements
-                $rebootLogs = foreach ($event in $events) {
+                $rebootLogs = foreach ($rebootEvent in $events) {
                     $properties = @{
-                        TimeCreated = $event.TimeCreated
-                        EventID     = $event.Id
-                        Computer    = $event.MachineName
+                        TimeCreated = $rebootEvent.TimeCreated
+                        EventID     = $rebootEvent.Id
+                        Computer    = $rebootEvent.MachineName
                         User        = 'N/A'
                         Reason      = 'N/A'
                         Process     = 'N/A'
@@ -112,13 +112,13 @@ function Get-RemoteRebootLog {
                         Type        = 'N/A'
                     }
 
-                    switch ($event.Id) {
+                    switch ($rebootEvent.Id) {
                         1074 {
                             # Shutdown initié par utilisateur/application
                             $properties.Type = 'Shutdown/Restart initié'
 
                             # Extraction des informations du message XML
-                            $xml = [xml]$event.ToXml()
+                            $xml = [xml]$rebootEvent.ToXml()
                             $eventData = $xml.Event.EventData.Data
 
                             if ($eventData) {
@@ -149,8 +149,8 @@ function Get-RemoteRebootLog {
                             $properties.Reason = 'Arrêt inattendu du système (crash/panne)'
 
                             # Tente d'extraire l'heure du dernier boot
-                            if ($event.Properties) {
-                                $properties.Comment = "Dernière heure de boot connue: $($event.Properties[0].Value) $($event.Properties[1].Value)"
+                            if ($rebootEvent.Properties) {
+                                $properties.Comment = "Dernière heure de boot connue: $($rebootEvent.Properties[0].Value) $($rebootEvent.Properties[1].Value)"
                             }
                         }
 
@@ -158,7 +158,7 @@ function Get-RemoteRebootLog {
                             # Raison du shutdown (information supplémentaire)
                             $properties.Type = 'Information raison shutdown'
 
-                            $xml = [xml]$event.ToXml()
+                            $xml = [xml]$rebootEvent.ToXml()
                             $eventData = $xml.Event.EventData.Data
 
                             if ($eventData) {
