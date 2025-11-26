@@ -2,45 +2,45 @@
 {
     <#
     .SYNOPSIS
-        Récupère les logs de reboot d'un serveur distant.
+        Retrieves reboot logs from a remote server.
 
     .DESCRIPTION
-        Cette fonction interroge le journal d'événements System d'un serveur distant pour
-        identifier les événements de reboot (ID 1074, 6006, 6008) et affiche qui a
-        initié le reboot ainsi que la raison si elle est disponible.
+        This function queries the System event log of a remote server to
+        identify reboot events (ID 1074, 6006, 6008) and displays who
+        initiated the reboot and the reason if available.
 
     .PARAMETER ComputerName
-        Nom ou adresse IP du serveur à interroger.
+        Name or IP address of the server to query.
 
     .PARAMETER Credential
-        Informations d'identification pour se connecter au serveur distant.
-        Si non spécifié, utilise les credentials de l'utilisateur actuel.
+        Credentials to connect to the remote server.
+        If not specified, uses the current user's credentials.
 
     .PARAMETER MaxEvents
-        Nombre maximum d'événements à récupérer. Par défaut: 50.
+        Maximum number of events to retrieve. Default: 50.
 
     .PARAMETER StartTime
-        Date de début pour la recherche des événements. Par défaut: 30 jours en arrière.
+        Start date for the event search. Default: 30 days back.
 
     .EXAMPLE
         Get-RemoteRebootLog -ComputerName "SERVER01"
 
-        Récupère les logs de reboot du serveur SERVER01.
+        Retrieves reboot logs from server SERVER01.
 
     .EXAMPLE
         Get-RemoteRebootLog -ComputerName "SERVER01" -Credential (Get-Credential)
 
-        Récupère les logs de reboot avec des credentials spécifiques.
+        Retrieves reboot logs with specific credentials.
 
     .EXAMPLE
         Get-RemoteRebootLog -ComputerName "SERVER01" -StartTime (Get-Date).AddDays(-7)
 
-        Récupère les logs de reboot des 7 derniers jours.
+        Retrieves reboot logs from the last 7 days.
 
     .EXAMPLE
         "SERVER01", "SERVER02" | Get-RemoteRebootLog
 
-        Récupère les logs de reboot de plusieurs serveurs via pipeline.
+        Retrieves reboot logs from multiple servers via pipeline.
     #>
 
     [CmdletBinding()]
@@ -62,13 +62,13 @@
 
     begin
     {
-        Write-Verbose "Début de la recherche des logs de reboot"
+        Write-Verbose "Starting reboot log search"
 
-        # Event IDs pour les reboots:
-        # 1074 = Shutdown initié par un utilisateur ou une application
-        # 6006 = Event Log service stopped (shutdown propre)
-        # 6008 = Shutdown imprévu (crash, perte de courant)
-        # 1076 = Raison du shutdown (suit généralement 1074)
+        # Event IDs for reboots:
+        # 1074 = Shutdown initiated by a user or application
+        # 6006 = Event Log service stopped (clean shutdown)
+        # 6008 = Unexpected shutdown (crash, power loss)
+        # 1076 = Shutdown reason (usually follows 1074)
         $eventIDs = @(1074, 6006, 6008, 1076)
     }
 
@@ -78,9 +78,9 @@
         {
             try
             {
-                Write-Verbose "Connexion à $computer..."
+                Write-Verbose "Connecting to $computer..."
 
-                # Paramètres pour Get-WinEvent
+                # Parameters for Get-WinEvent
                 $filterHash = @{
                     LogName   = 'System'
                     ID        = $eventIDs
@@ -99,14 +99,14 @@
                     $getWinEventParams.Add('Credential', $Credential)
                 }
 
-                # Récupération des événements
+                # Retrieve events
                 $events = Get-WinEvent @getWinEventParams
 
                 if ($events)
                 {
-                    Write-Verbose "Trouvé $($events.Count) événement(s) de reboot sur $computer"
+                    Write-Verbose "Found $($events.Count) reboot event(s) on $computer"
 
-                    # Traitement et affichage des événements
+                    # Process and display events
                     $rebootLogs = foreach ($rebootEvent in $events)
                     {
                         $properties = @{
@@ -124,21 +124,21 @@
                         {
                             1074
                             {
-                                # Shutdown initié par utilisateur/application
-                                $properties.Type = 'Shutdown/Restart initié'
+                                # Shutdown initiated by user/application
+                                $properties.Type = 'Initiated Shutdown/Restart'
 
-                                # Extraction des informations du message XML
+                                # Extract information from XML message
                                 $xml = [xml]$rebootEvent.ToXml()
                                 $eventData = $xml.Event.EventData.Data
 
                                 if ($eventData)
                                 {
-                                    $properties.User = [string]$eventData[6]  # User qui a initié
-                                    $properties.Process = [string]$eventData[0]  # Processus
-                                    $properties.Reason = [string]$eventData[2]  # Code raison
-                                    $properties.Comment = [string]$eventData[5]  # Commentaire
+                                    $properties.User = [string]$eventData[6]  # User who initiated
+                                    $properties.Process = [string]$eventData[0]  # Process
+                                    $properties.Reason = [string]$eventData[2]  # Reason code
+                                    $properties.Comment = [string]$eventData[5]  # Comment
 
-                                    # Traduction du type de shutdown
+                                    # Translate shutdown type
                                     $shutdownType = [string]$eventData[4]
                                     if ($shutdownType -eq 'restart')
                                     {
@@ -153,28 +153,28 @@
 
                             6006
                             {
-                                # Event Log service arrêté (shutdown propre)
-                                $properties.Type = 'Shutdown propre'
-                                $properties.Reason = 'Service Event Log arrêté'
+                                # Event Log service stopped (clean shutdown)
+                                $properties.Type = 'Clean Shutdown'
+                                $properties.Reason = 'Event Log service stopped'
                             }
 
                             6008
                             {
-                                # Shutdown imprévu
-                                $properties.Type = 'Shutdown imprévu'
-                                $properties.Reason = 'Arrêt inattendu du système (crash/panne)'
+                                # Unexpected shutdown
+                                $properties.Type = 'Unexpected Shutdown'
+                                $properties.Reason = 'Unexpected system shutdown (crash/power failure)'
 
-                                # Tente d'extraire l'heure du dernier boot
+                                # Try to extract last boot time
                                 if ($rebootEvent.Properties)
                                 {
-                                    $properties.Comment = "Dernière heure de boot connue: $($rebootEvent.Properties[0].Value) $($rebootEvent.Properties[1].Value)"
+                                    $properties.Comment = "Last known boot time: $($rebootEvent.Properties[0].Value) $($rebootEvent.Properties[1].Value)"
                                 }
                             }
 
                             1076
                             {
-                                # Raison du shutdown (information supplémentaire)
-                                $properties.Type = 'Information raison shutdown'
+                                # Shutdown reason (additional information)
+                                $properties.Type = 'Shutdown Reason Information'
 
                                 $xml = [xml]$rebootEvent.ToXml()
                                 $eventData = $xml.Event.EventData.Data
@@ -191,13 +191,13 @@
                         [PSCustomObject]$properties
                     }
 
-                    # Retourne les objets pour pouvoir les manipuler
+                    # Return the objects for manipulation
                     Write-Output $rebootLogs
 
                 }
                 else
                 {
-                    Write-Verbose "Aucun événement de reboot trouvé sur $computer depuis le $StartTime"
+                    Write-Verbose "No reboot events found on $computer since $StartTime"
                 }
 
             }
@@ -205,19 +205,19 @@
             {
                 if ($_.Exception.Message -like "*No events were found*")
                 {
-                    Write-Verbose "Aucun événement de reboot trouvé sur $computer depuis le $StartTime"
+                    Write-Verbose "No reboot events found on $computer since $StartTime"
                 }
                 elseif ($_.Exception.Message -like "*The RPC server is unavailable*")
                 {
-                    Write-Error "Impossible de se connecter à $computer. Vérifiez que le serveur est accessible et que le pare-feu autorise WinRM/RPC."
+                    Write-Error "Unable to connect to $computer. Verify that the server is accessible and the firewall allows WinRM/RPC."
                 }
                 elseif ($_.Exception.Message -like "*Access is denied*")
                 {
-                    Write-Error "Accès refusé à $computer. Vérifiez vos permissions."
+                    Write-Error "Access denied to $computer. Verify your permissions."
                 }
                 else
                 {
-                    Write-Error "Erreur lors de la récupération des événements de $computer : $($_.Exception.Message)"
+                    Write-Error "Error retrieving events from $computer : $($_.Exception.Message)"
                 }
             }
         }
@@ -225,6 +225,6 @@
 
     end
     {
-        Write-Verbose "Fin de la recherche des logs de reboot"
+        Write-Verbose "Reboot log search completed"
     }
 }
