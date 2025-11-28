@@ -206,13 +206,19 @@ function Get-RemoteGPResult
                     }
 
                     # Return report information
+                    $fileSize = 0
+                    if (Test-Path -Path $localReportPath)
+                    {
+                        $fileSize = (Get-Item -Path $localReportPath -ErrorAction SilentlyContinue).Length
+                    }
+
                     [PSCustomObject]@{
                         ComputerName = $computer
                         ReportPath   = $localReportPath
                         Scope        = $Scope
                         UserName     = if ($UserName) { $UserName } else { 'Current User' }
                         Timestamp    = Get-Date
-                        FileSize     = (Get-Item -Path $localReportPath).Length
+                        FileSize     = $fileSize
                     }
                 }
                 finally
