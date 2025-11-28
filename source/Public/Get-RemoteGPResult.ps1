@@ -186,6 +186,18 @@ function Get-RemoteGPResult
                     Write-Verbose "Copying report from $computer to $localReportPath..."
                     Copy-Item -FromSession $session -Path $remotePath -Destination $localReportPath -ErrorAction Stop
 
+                    # Verify that the file was successfully copied
+                    if (-not (Test-Path -Path $localReportPath))
+                    {
+                        throw "Failed to copy report file from remote computer. The file does not exist at: $localReportPath"
+                    }
+
+                    $fileItem = Get-Item -Path $localReportPath -ErrorAction Stop
+                    if ($fileItem.Length -eq 0)
+                    {
+                        throw "Report file was copied but appears to be empty (0 bytes)"
+                    }
+
                     # Clean up remote file
                     Write-Verbose "Cleaning up remote temporary file..."
                     Invoke-Command -Session $session -ScriptBlock {
@@ -206,19 +218,13 @@ function Get-RemoteGPResult
                     }
 
                     # Return report information
-                    $fileSize = 0
-                    if (Test-Path -Path $localReportPath)
-                    {
-                        $fileSize = (Get-Item -Path $localReportPath -ErrorAction SilentlyContinue).Length
-                    }
-
                     [PSCustomObject]@{
                         ComputerName = $computer
                         ReportPath   = $localReportPath
                         Scope        = $Scope
                         UserName     = if ($UserName) { $UserName } else { 'Current User' }
                         Timestamp    = Get-Date
-                        FileSize     = $fileSize
+                        FileSize     = $fileItem.Length
                     }
                 }
                 finally
