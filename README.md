@@ -44,6 +44,50 @@ Install-Module -Name PSPowerAdminTasks -Scope CurrentUser
 
 ## Functions
 
+### Get-RemoteGPResult
+
+Generates and retrieves a Group Policy results report from a remote computer.
+
+**Features:**
+- Execute `gpresult /h` on remote computer via PowerShell Remoting
+- Automatically copy HTML report to local machine
+- Support for Computer, User, or Both scopes
+- Optional immediate display in browser with `-Show` switch
+- Custom output path support
+- Specific user account querying
+- Pipeline support for multiple computers
+- Automatic cleanup of remote temporary files
+
+**Parameters:**
+- `ComputerName` - Name or IP address of the remote computer (Mandatory)
+- `Credential` - PSCredential object for authentication (Optional)
+- `OutputPath` - Local path where the HTML report will be saved (Optional)
+- `Scope` - Scope of the report: 'Computer', 'User', or 'Both' (Default: 'Both')
+- `Show` - Opens the HTML report in the default browser after retrieval (Optional)
+- `UserName` - For 'User' or 'Both' scope, specify the user account to query (Optional)
+
+**Examples:**
+
+```powershell
+# Generate GP results report for a single server
+Get-RemoteGPResult -ComputerName "SERVER01"
+
+# Generate and immediately display the report
+Get-RemoteGPResult -ComputerName "SERVER01" -Show
+
+# Use specific credentials
+Get-RemoteGPResult -ComputerName "SERVER01" -Credential (Get-Credential) -Show
+
+# Save report to a specific location
+Get-RemoteGPResult -ComputerName "SERVER01" -OutputPath "C:\Reports\GPResult_Server01.html"
+
+# Generate report for a specific user
+Get-RemoteGPResult -ComputerName "SERVER01" -Scope User -UserName "domain\jdoe" -Show
+
+# Process multiple servers via pipeline
+"SERVER01", "SERVER02", "SERVER03" | Get-RemoteGPResult -Show
+```
+
 ### Get-RemoteSoftware
 
 Retrieves the list of installed software from remote servers via the Windows Registry.
