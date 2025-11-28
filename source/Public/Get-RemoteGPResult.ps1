@@ -18,6 +18,9 @@ function Get-RemoteGPResult
 
     .PARAMETER OutputPath
         Local path where the HTML report will be saved.
+        Can be a directory path or a full file path.
+        - If a directory (existing or ending with / or \), a timestamped filename will be added.
+        - If a file path with extension, it will be used as-is.
         Default: Current directory with filename "GPResult_<ComputerName>_<Timestamp>.html".
 
     .PARAMETER Scope
@@ -44,7 +47,12 @@ function Get-RemoteGPResult
     .EXAMPLE
         Get-RemoteGPResult -ComputerName "SERVER01" -Credential (Get-Credential) -OutputPath "C:\Reports\gpreport.html"
 
-        Generates a report using specific credentials and saves it to a custom location.
+        Generates a report using specific credentials and saves it to a specific file path.
+
+    .EXAMPLE
+        Get-RemoteGPResult -ComputerName "SERVER01" -OutputPath "C:\Reports\"
+
+        Saves the report to C:\Reports\ with an auto-generated timestamped filename.
 
     .EXAMPLE
         Get-RemoteGPResult -ComputerName "SERVER01" -Scope User -UserName "domain\jdoe"
@@ -101,14 +109,43 @@ function Get-RemoteGPResult
                 }
 
                 # Generate timestamped filename if OutputPath not specified
+                $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
                 if (-not $OutputPath)
                 {
-                    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+                    # No path specified - use current directory with timestamped filename
                     $localReportPath = Join-Path -Path (Get-Location) -ChildPath "GPResult_${computer}_${timestamp}.html"
                 }
                 else
                 {
-                    $localReportPath = $OutputPath
+                    # OutputPath specified - check if it's a directory or file
+                    if (Test-Path -Path $OutputPath -PathType Container)
+                    {
+                        # It's a directory - add timestamped filename
+                        $localReportPath = Join-Path -Path $OutputPath -ChildPath "GPResult_${computer}_${timestamp}.html"
+                    }
+                    elseif ($OutputPath -match '[\\/]$' -or -not [System.IO.Path]::HasExtension($OutputPath))
+                    {
+                        # Path ends with slash or has no extension - treat as directory
+                        # Create directory if it doesn't exist
+                        if (-not (Test-Path -Path $OutputPath))
+                        {
+                            New-Item -Path $OutputPath -ItemType Directory -Force -ErrorAction Stop | Out-Null
+                        }
+                        $localReportPath = Join-Path -Path $OutputPath -ChildPath "GPResult_${computer}_${timestamp}.html"
+                    }
+                    else
+                    {
+                        # Treat as full file path
+                        $localReportPath = $OutputPath
+
+                        # Ensure parent directory exists
+                        $parentDir = Split-Path -Path $OutputPath -Parent
+                        if ($parentDir -and -not (Test-Path -Path $parentDir))
+                        {
+                            New-Item -Path $parentDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+                        }
+                    }
                 }
 
                 # Create remote session parameters
