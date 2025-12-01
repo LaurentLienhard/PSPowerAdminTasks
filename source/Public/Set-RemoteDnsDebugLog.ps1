@@ -105,7 +105,7 @@
                     $cmdletParams['EnableLoggingToFile'] = $false
 
                     Set-DnsServerDiagnostics @cmdletParams -ErrorAction Stop
-                    Write-Host "[-] Debug Logging successfully disabled on $ComputerName." -ForegroundColor Cyan
+                    Write-Information "[-] Debug Logging successfully disabled on $ComputerName." -InformationAction Continue
                 }
             }
             else
@@ -127,9 +127,9 @@
                     Write-Verbose "Applying configuration..."
                     Set-DnsServerDiagnostics @cmdletParams -ErrorAction Stop
 
-                    Write-Host "[+] Debug Logging enabled on $ComputerName" -ForegroundColor Green
-                    Write-Host "    File path: $LogFilePath" -ForegroundColor Gray
-                    Write-Host "    Max Size : $([math]::Round($MaxSize / 1MB, 2)) MB" -ForegroundColor Gray
+                    Write-Information "[+] Debug Logging enabled on $ComputerName" -InformationAction Continue
+                    Write-Information "    File path: $LogFilePath" -InformationAction Continue
+                    Write-Information "    Max Size : $([math]::Round($MaxSize / 1MB, 2)) MB" -InformationAction Continue
                 }
             }
         }

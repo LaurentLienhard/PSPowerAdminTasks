@@ -62,7 +62,7 @@
 
     begin
     {
-        Write-Verbose "Starting reboot log search"
+        Write-Verbose "Début de la recherche des logs de reboot"
 
         # Event IDs for reboots:
         # 1074 = Shutdown initiated by a user or application
@@ -78,7 +78,7 @@
         {
             try
             {
-                Write-Verbose "Connecting to $computer..."
+                Write-Verbose "Connexion à $computer..."
 
                 # Parameters for Get-WinEvent
                 $filterHash = @{
@@ -104,7 +104,7 @@
 
                 if ($events)
                 {
-                    Write-Verbose "Found $($events.Count) reboot event(s) on $computer"
+                    Write-Verbose "Trouvé $($events.Count) événement(s) de reboot sur $computer"
 
                     # Process and display events
                     $rebootLogs = foreach ($rebootEvent in $events)
@@ -154,27 +154,27 @@
                             6006
                             {
                                 # Event Log service stopped (clean shutdown)
-                                $properties.Type = 'Clean Shutdown'
-                                $properties.Reason = 'Event Log service stopped'
+                                $properties.Type = 'Shutdown propre'
+                                $properties.Reason = 'Service Event Log arrêté'
                             }
 
                             6008
                             {
                                 # Unexpected shutdown
-                                $properties.Type = 'Unexpected Shutdown'
-                                $properties.Reason = 'Unexpected system shutdown (crash/power failure)'
+                                $properties.Type = 'Shutdown imprévu'
+                                $properties.Reason = 'Arrêt inattendu du système (crash/panne)'
 
                                 # Try to extract last boot time
                                 if ($rebootEvent.Properties)
                                 {
-                                    $properties.Comment = "Last known boot time: $($rebootEvent.Properties[0].Value) $($rebootEvent.Properties[1].Value)"
+                                    $properties.Comment = "Dernière heure de boot connue: $($rebootEvent.Properties[0].Value) $($rebootEvent.Properties[1].Value)"
                                 }
                             }
 
                             1076
                             {
                                 # Shutdown reason (additional information)
-                                $properties.Type = 'Shutdown Reason Information'
+                                $properties.Type = 'Information raison shutdown'
 
                                 $xml = [xml]$rebootEvent.ToXml()
                                 $eventData = $xml.Event.EventData.Data
@@ -197,7 +197,7 @@
                 }
                 else
                 {
-                    Write-Verbose "No reboot events found on $computer since $StartTime"
+                    Write-Verbose "Aucun événement de reboot trouvé sur $computer depuis $StartTime"
                 }
 
             }
@@ -205,19 +205,19 @@
             {
                 if ($_.Exception.Message -like "*No events were found*")
                 {
-                    Write-Verbose "No reboot events found on $computer since $StartTime"
+                    Write-Verbose "Aucun événement de reboot trouvé sur $computer depuis $StartTime"
                 }
                 elseif ($_.Exception.Message -like "*The RPC server is unavailable*")
                 {
-                    Write-Error "Unable to connect to $computer. Verify that the server is accessible and the firewall allows WinRM/RPC."
+                    Write-Error "Impossible de se connecter à $computer. Vérifiez que le serveur est accessible et que le firewall autorise WinRM/RPC."
                 }
                 elseif ($_.Exception.Message -like "*Access is denied*")
                 {
-                    Write-Error "Access denied to $computer. Verify your permissions."
+                    Write-Error "Accès refusé à $computer. Vérifiez vos permissions."
                 }
                 else
                 {
-                    Write-Error "Error retrieving events from $computer : $($_.Exception.Message)"
+                    Write-Error "Erreur lors de la récupération des événements depuis $computer : $($_.Exception.Message)"
                 }
             }
         }
@@ -225,6 +225,6 @@
 
     end
     {
-        Write-Verbose "Reboot log search completed"
+        Write-Verbose "Fin de la recherche des logs de reboot"
     }
 }

@@ -285,7 +285,7 @@ function Get-RemoteGPResult
                             }
                         } -ArgumentList $remotePath
 
-                        Write-Host "Report successfully saved to: $localReportPath" -ForegroundColor Green
+                        Write-Information "Report successfully saved to: $localReportPath" -InformationAction Continue
 
                         # Open report if requested
                         if ($showReport)
@@ -483,14 +483,13 @@ function Get-RemoteGPResult
                         # Clean up remote file
                         Write-Verbose "Cleaning up remote temporary file..."
                         Invoke-Command -Session $session -ScriptBlock {
-                            param($Path)
-                            if (Test-Path -Path $Path)
+                            if (Test-Path -Path $using:remotePath)
                             {
-                                Remove-Item -Path $Path -Force -ErrorAction SilentlyContinue
+                                Remove-Item -Path $using:remotePath -Force -ErrorAction SilentlyContinue
                             }
-                        } -ArgumentList $remotePath
+                        }
 
-                        Write-Host "Report successfully saved to: $localReportPath" -ForegroundColor Green
+                        Write-Information "Report successfully saved to: $localReportPath" -InformationAction Continue
 
                         # Open report if requested
                         if ($Show)
