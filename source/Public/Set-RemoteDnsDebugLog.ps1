@@ -102,7 +102,7 @@
                 # Disable Logging
                 if ($PSCmdlet.ShouldProcess($ComputerName, "Disable DNS Debug Logging"))
                 {
-                    $cmdletParams['EnableLogging'] = $false
+                    $cmdletParams['EnableLoggingToFile'] = $false
 
                     Set-DnsServerDiagnostics @cmdletParams -ErrorAction Stop
                     Write-Host "[-] Debug Logging successfully disabled on $ComputerName." -ForegroundColor Cyan
@@ -112,7 +112,7 @@
             {
                 # Enable Logging
                 # Add Enable-specific parameters to the hashtable
-                $cmdletParams['EnableLogging'] = $true
+                $cmdletParams['EnableLoggingToFile'] = $true
                 $cmdletParams['LogFilePath'] = $LogFilePath
                 $cmdletParams['MaxLogFileSize'] = $MaxSize
 
@@ -148,5 +148,3 @@
         }
     }
 }
-
- Set-RemoteDnsDebugLog -ComputerName ecrdc01 -Credential (Get-Secret AdmAccount) -LogFilePath "c:\temp\ecrdc02.log"
