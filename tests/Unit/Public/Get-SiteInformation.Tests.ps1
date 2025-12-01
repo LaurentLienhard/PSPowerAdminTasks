@@ -47,15 +47,35 @@ BeforeAll {
         siteObjectBL       = $null
     }
 
-    # Mock site links
+    # Mock site links with cost information
     $script:mockSiteLink1 = [PSCustomObject]@{
-        Name = 'DEFAULTIPSITELINK'
-        DistinguishedName = 'CN=DEFAULTIPSITELINK,CN=IP,CN=Inter-Site Transports,CN=Sites,CN=Configuration,DC=contoso,DC=com'
+        Name                            = 'DEFAULTIPSITELINK'
+        Description                     = 'Default site link'
+        Cost                           = 100
+        ReplicationFrequencyInMinutes   = 180
+        ReplaceWithInterSiteTopology   = $false
+        DistinguishedName              = 'CN=DEFAULTIPSITELINK,CN=IP,CN=Inter-Site Transports,CN=Sites,CN=Configuration,DC=contoso,DC=com'
+        WhenCreated                    = Get-Date '2024-01-01 10:00:00'
+        WhenChanged                    = Get-Date '2024-01-15 14:30:00'
+        SiteList                       = @(
+            'CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=contoso,DC=com',
+            'CN=Paris,CN=Sites,CN=Configuration,DC=contoso,DC=com'
+        )
     }
 
     $script:mockSiteLink2 = [PSCustomObject]@{
-        Name = 'PARIS-LONDON'
-        DistinguishedName = 'CN=PARIS-LONDON,CN=IP,CN=Inter-Site Transports,CN=Sites,CN=Configuration,DC=contoso,DC=com'
+        Name                            = 'PARIS-LONDON'
+        Description                     = 'Paris to London link'
+        Cost                           = 50
+        ReplicationFrequencyInMinutes   = 120
+        ReplaceWithInterSiteTopology   = $false
+        DistinguishedName              = 'CN=PARIS-LONDON,CN=IP,CN=Inter-Site Transports,CN=Sites,CN=Configuration,DC=contoso,DC=com'
+        WhenCreated                    = Get-Date '2024-02-01 10:00:00'
+        WhenChanged                    = Get-Date '2024-02-15 14:30:00'
+        SiteList                       = @(
+            'CN=Paris,CN=Sites,CN=Configuration,DC=contoso,DC=com',
+            'CN=London,CN=Sites,CN=Configuration,DC=contoso,DC=com'
+        )
     }
 }
 
@@ -225,7 +245,15 @@ Describe 'Get-SiteInformation' -Tag 'Unit', 'Public' {
             $result = Get-SiteInformation -Name 'Paris'
 
             $result.SiteLinks.Count | Should -Be 1
-            $result.SiteLinks | Should -Contain 'PARIS-LONDON'
+            $result.SiteLinks[0].Name | Should -Be 'PARIS-LONDON'
+            $result.SiteLinks[0].Cost | Should -Be 50
+            $result.SiteLinks[0].ReplicationFrequency | Should -Be 120
+        }
+
+        It 'Should calculate total inter-site cost correctly' {
+            $result = Get-SiteInformation -Name 'Paris'
+
+            $result.TotalInterSiteCost | Should -Be 50
         }
     }
 
@@ -426,7 +454,18 @@ Describe 'Get-SiteInformation' -Tag 'Unit', 'Public' {
         It 'Should use AddSiteLink method to add site links' {
             $result = Get-SiteInformation -Name 'Paris'
 
-            $result.SiteLinks | Should -Contain 'PARIS-LONDON'
+            $result.SiteLinks.Count | Should -Be 1
+            $result.SiteLinks[0].Name | Should -Be 'PARIS-LONDON'
+        }
+
+        It 'Should create SITELINK objects with correct properties' {
+            $result = Get-SiteInformation -Name 'Paris'
+
+            $siteLink = $result.SiteLinks[0]
+            $siteLink.GetType().Name | Should -Be 'SITELINK'
+            $siteLink.Name | Should -Be 'PARIS-LONDON'
+            $siteLink.Cost | Should -Be 50
+            $siteLink.ReplicationFrequency | Should -Be 120
         }
     }
 

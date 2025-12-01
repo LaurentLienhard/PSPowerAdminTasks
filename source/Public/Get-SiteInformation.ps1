@@ -11,9 +11,10 @@ function Get-SiteInformation {
         The function retrieves:
         - Site name, description, and location
         - Associated subnets
-        - Site links
+        - Inter-site links with replication costs and frequency
         - Creation and modification timestamps
         - Distinguished names
+        - Total inter-site cost calculation
 
     .PARAMETER Name
         Specifies the name of one or more AD sites to retrieve.
@@ -53,6 +54,20 @@ function Get-SiteInformation {
         $sites | Where-Object { $_.Subnets.Count -eq 0 } | Select-Object Name, Description
 
         Gets all sites and filters those without any subnets assigned (potential configuration issue).
+
+    .EXAMPLE
+        $sites = Get-SiteInformation
+        $sites | Select-Object Name, TotalInterSiteCost, @{Name='LinkCount'; Expression={$_.SiteLinks.Count}} | Sort-Object TotalInterSiteCost -Descending
+
+        Retrieves all sites and displays them sorted by total inter-site cost (highest first).
+
+    .EXAMPLE
+        $sites = Get-SiteInformation
+        foreach ($site in $sites) {
+            $site.GetSiteLinksSummary()
+        }
+
+        Displays detailed summary of inter-site links for all sites, including cost and replication frequency.
 
     .EXAMPLE
         Get-SiteInformation | Export-Csv -Path "C:\Audit\ADSites.csv" -NoTypeInformation
@@ -150,18 +165,21 @@ function Get-SiteInformation {
                     # Create SITE object from AD object using the static method
                     $siteObject = [SITE]::FromADObject($adSite)
 
-                    # Query site links for this site
+                    # Query site links for this site with detailed cost information
                     try {
-                        $siteLinks = Get-ADReplicationSiteLink -Filter "SiteList -eq '$($adSite.DistinguishedName)'" @adParams -ErrorAction SilentlyContinue
+                        $siteLinks = Get-ADReplicationSiteLink -Filter "SiteList -eq '$($adSite.DistinguishedName)'" @adParams -Properties Cost, ReplicationFrequencyInMinutes, ReplaceWithInterSiteTopology, Description, WhenCreated, WhenChanged -ErrorAction SilentlyContinue
 
                         if ($siteLinks) {
                             foreach ($link in $siteLinks) {
-                                $siteObject.AddSiteLink($link.Name)
+                                # Create SITELINK object from AD object
+                                $siteLinkObject = [SITELINK]::FromADObject($link)
+                                $siteObject.AddSiteLink($siteLinkObject)
                             }
-                            Write-Verbose "Added $($siteLinks.Count) site link(s) to site: $($adSite.Name)"
+                            Write-Verbose "Added $($siteLinks.Count) inter-site link(s) with cost information to site: $($adSite.Name)"
+                            Write-Verbose "Total inter-site cost: $($siteObject.TotalInterSiteCost)"
                         }
                     } catch {
-                        Write-Warning "Could not retrieve site links for site $($adSite.Name): $($_.Exception.Message)"
+                        Write-Warning "Could not retrieve inter-site links for site $($adSite.Name): $($_.Exception.Message)"
                     }
 
                     # Add to collection
