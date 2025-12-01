@@ -5,14 +5,14 @@ class SITELINK {
     [int]$Cost
     [int]$ReplicationFrequency
     [bool]$ReplaceWithInterSiteTopology
-    [System.Collections.ArrayList]$Sites
+    [System.Collections.Generic.List[string]]$Sites
     [datetime]$WhenCreated
     [datetime]$WhenChanged
     [hashtable]$Options
 
     # Default constructor
     SITELINK() {
-        $this.Sites = [System.Collections.ArrayList]::new()
+        $this.Sites = [System.Collections.Generic.List[string]]::new()
         $this.Options = @{}
         $this.Cost = 100  # Default cost in AD
         $this.ReplicationFrequency = 180  # Default frequency in minutes
@@ -22,7 +22,7 @@ class SITELINK {
     # Constructor with name
     SITELINK([string]$Name) {
         $this.Name = $Name
-        $this.Sites = [System.Collections.ArrayList]::new()
+        $this.Sites = [System.Collections.Generic.List[string]]::new()
         $this.Options = @{}
         $this.Cost = 100
         $this.ReplicationFrequency = 180
@@ -34,7 +34,7 @@ class SITELINK {
         $this.Name = $Name
         $this.Cost = $Cost
         $this.ReplicationFrequency = $ReplicationFrequency
-        $this.Sites = [System.Collections.ArrayList]::new()
+        $this.Sites = [System.Collections.Generic.List[string]]::new()
         $this.Options = @{}
         $this.ReplaceWithInterSiteTopology = $false
     }

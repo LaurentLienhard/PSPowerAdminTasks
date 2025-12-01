@@ -4,8 +4,8 @@ class SITE {
     [string]$Description
     [string]$Location
     [string]$DistinguishedName
-    [System.Collections.ArrayList]$Subnets
-    [System.Collections.ArrayList]$SiteLinks
+    [System.Collections.Generic.List[string]]$Subnets
+    [System.Collections.Generic.List[SITELINK]]$SiteLinks
     [int]$TotalInterSiteCost
     [datetime]$WhenCreated
     [datetime]$WhenChanged
@@ -13,8 +13,8 @@ class SITE {
 
     # Default constructor
     SITE() {
-        $this.Subnets = [System.Collections.ArrayList]::new()
-        $this.SiteLinks = [System.Collections.ArrayList]::new()
+        $this.Subnets = [System.Collections.Generic.List[string]]::new()
+        $this.SiteLinks = [System.Collections.Generic.List[SITELINK]]::new()
         $this.TotalInterSiteCost = 0
         $this.Options = @{}
     }
@@ -22,8 +22,8 @@ class SITE {
     # Constructor with name
     SITE([string]$Name) {
         $this.Name = $Name
-        $this.Subnets = [System.Collections.ArrayList]::new()
-        $this.SiteLinks = [System.Collections.ArrayList]::new()
+        $this.Subnets = [System.Collections.Generic.List[string]]::new()
+        $this.SiteLinks = [System.Collections.Generic.List[SITELINK]]::new()
         $this.TotalInterSiteCost = 0
         $this.Options = @{}
     }
@@ -33,8 +33,8 @@ class SITE {
         $this.Name = $Name
         $this.Description = $Description
         $this.Location = $Location
-        $this.Subnets = [System.Collections.ArrayList]::new()
-        $this.SiteLinks = [System.Collections.ArrayList]::new()
+        $this.Subnets = [System.Collections.Generic.List[string]]::new()
+        $this.SiteLinks = [System.Collections.Generic.List[SITELINK]]::new()
         $this.TotalInterSiteCost = 0
         $this.Options = @{}
     }
@@ -57,16 +57,36 @@ class SITE {
 
     # Method to add a site link
     [void] AddSiteLink([SITELINK]$SiteLink) {
-        if ($SiteLink -and -not ($this.SiteLinks | Where-Object { $_.Name -eq $SiteLink.Name })) {
-            [void]$this.SiteLinks.Add($SiteLink)
+        if ($null -eq $SiteLink) {
+            return
+        }
+
+        # Check for duplicates using a simple loop
+        $exists = $false
+        foreach ($link in $this.SiteLinks) {
+            if ($link.Name -eq $SiteLink.Name) {
+                $exists = $true
+                break
+            }
+        }
+
+        if (-not $exists) {
+            $this.SiteLinks.Add($SiteLink)
             $this.UpdateTotalInterSiteCost()
         }
     }
 
     # Method to remove a site link
     [bool] RemoveSiteLink([string]$SiteLinkName) {
-        $linkToRemove = $this.SiteLinks | Where-Object { $_.Name -eq $SiteLinkName }
-        if ($linkToRemove) {
+        $linkToRemove = $null
+        foreach ($link in $this.SiteLinks) {
+            if ($link.Name -eq $SiteLinkName) {
+                $linkToRemove = $link
+                break
+            }
+        }
+
+        if ($null -ne $linkToRemove) {
             $this.SiteLinks.Remove($linkToRemove)
             $this.UpdateTotalInterSiteCost()
             return $true

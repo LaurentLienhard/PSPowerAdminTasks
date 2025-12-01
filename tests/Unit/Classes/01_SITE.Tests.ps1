@@ -31,6 +31,11 @@ BeforeAll {
         }
     }
 
+    $script:NewSiteLink = {
+        param($Name, $Cost, $ReplicationFrequency)
+        return [SITELINK]::new($Name, $Cost, $ReplicationFrequency)
+    }
+
     $script:FromADObject = {
         param($ADObject)
         return [SITE]::FromADObject($ADObject)
@@ -110,8 +115,8 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $site = & $script:module $script:NewSite 'Paris'
 
             $site.Name | Should -Be 'Paris'
-            $site.Subnets.GetType().Name | Should -Be 'ArrayList'
-            $site.SiteLinks.GetType().Name | Should -Be 'ArrayList'
+            $site.Subnets.GetType().Name | Should -Be 'List`1'
+            $site.SiteLinks.GetType().Name | Should -Be 'List`1'
         }
 
         It 'Should create instance with full constructor' {
@@ -120,8 +125,8 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $site.Name | Should -Be 'Paris'
             $site.Description | Should -Be 'Main office'
             $site.Location | Should -Be 'Paris, France'
-            $site.Subnets.GetType().Name | Should -Be 'ArrayList'
-            $site.SiteLinks.GetType().Name | Should -Be 'ArrayList'
+            $site.Subnets.GetType().Name | Should -Be 'List`1'
+            $site.SiteLinks.GetType().Name | Should -Be 'List`1'
         }
 
         It 'Should initialize collections as empty' {
@@ -208,26 +213,32 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
         }
 
         It 'Should add a site link to the site' {
-            $script:testSite.AddSiteLink('DEFAULTIPSITELINK')
+            $siteLink = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $script:testSite.AddSiteLink($siteLink)
 
             $script:testSite.SiteLinks.Count | Should -Be 1
-            $script:testSite.SiteLinks | Should -Contain 'DEFAULTIPSITELINK'
+            $script:testSite.SiteLinks[0].Name | Should -Be 'DEFAULTIPSITELINK'
         }
 
         It 'Should add multiple site links' {
-            $script:testSite.AddSiteLink('DEFAULTIPSITELINK')
-            $script:testSite.AddSiteLink('PARIS-LONDON')
-            $script:testSite.AddSiteLink('PARIS-BERLIN')
+            $siteLink1 = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $siteLink2 = & $script:module $script:NewSiteLink 'PARIS-LONDON' 50 120
+            $siteLink3 = & $script:module $script:NewSiteLink 'PARIS-BERLIN' 75 150
+
+            $script:testSite.AddSiteLink($siteLink1)
+            $script:testSite.AddSiteLink($siteLink2)
+            $script:testSite.AddSiteLink($siteLink3)
 
             $script:testSite.SiteLinks.Count | Should -Be 3
-            $script:testSite.SiteLinks | Should -Contain 'DEFAULTIPSITELINK'
-            $script:testSite.SiteLinks | Should -Contain 'PARIS-LONDON'
-            $script:testSite.SiteLinks | Should -Contain 'PARIS-BERLIN'
+            $script:testSite.SiteLinks[0].Name | Should -Be 'DEFAULTIPSITELINK'
+            $script:testSite.SiteLinks[1].Name | Should -Be 'PARIS-LONDON'
+            $script:testSite.SiteLinks[2].Name | Should -Be 'PARIS-BERLIN'
         }
 
         It 'Should not add duplicate site link' {
-            $script:testSite.AddSiteLink('DEFAULTIPSITELINK')
-            $script:testSite.AddSiteLink('DEFAULTIPSITELINK')
+            $siteLink = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $script:testSite.AddSiteLink($siteLink)
+            $script:testSite.AddSiteLink($siteLink)
 
             $script:testSite.SiteLinks.Count | Should -Be 1
         }
@@ -236,9 +247,12 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
     Context 'RemoveSiteLink Method' {
         BeforeEach {
             $script:testSite = & $script:module $script:NewSite 'TestSite'
-            $script:testSite.AddSiteLink('DEFAULTIPSITELINK')
-            $script:testSite.AddSiteLink('PARIS-LONDON')
-            $script:testSite.AddSiteLink('PARIS-BERLIN')
+            $siteLink1 = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $siteLink2 = & $script:module $script:NewSiteLink 'PARIS-LONDON' 50 120
+            $siteLink3 = & $script:module $script:NewSiteLink 'PARIS-BERLIN' 75 150
+            $script:testSite.AddSiteLink($siteLink1)
+            $script:testSite.AddSiteLink($siteLink2)
+            $script:testSite.AddSiteLink($siteLink3)
         }
 
         It 'Should remove an existing site link' {
@@ -246,7 +260,7 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
 
             $result | Should -Be $true
             $script:testSite.SiteLinks.Count | Should -Be 2
-            $script:testSite.SiteLinks | Should -Not -Contain 'PARIS-LONDON'
+            $script:testSite.SiteLinks.Name | Should -Not -Contain 'PARIS-LONDON'
         }
 
         It 'Should return false when removing non-existent site link' {
@@ -259,8 +273,8 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
         It 'Should maintain other site links when removing one' {
             $script:testSite.RemoveSiteLink('PARIS-LONDON')
 
-            $script:testSite.SiteLinks | Should -Contain 'DEFAULTIPSITELINK'
-            $script:testSite.SiteLinks | Should -Contain 'PARIS-BERLIN'
+            $script:testSite.SiteLinks[0].Name | Should -Be 'DEFAULTIPSITELINK'
+            $script:testSite.SiteLinks[1].Name | Should -Be 'PARIS-BERLIN'
         }
     }
 
@@ -269,7 +283,8 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $script:testSite = & $script:module $script:NewSite 'Paris' 'Main office' 'Paris, France'
             $script:testSite.DistinguishedName = 'CN=Paris,CN=Sites,CN=Configuration,DC=contoso,DC=com'
             $script:testSite.AddSubnet('192.168.1.0/24')
-            $script:testSite.AddSiteLink('DEFAULTIPSITELINK')
+            $siteLink = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $script:testSite.AddSiteLink($siteLink)
             $script:testSite.WhenCreated = Get-Date '2024-01-01 10:00:00'
             $script:testSite.WhenChanged = Get-Date '2024-01-15 14:30:00'
         }
@@ -311,13 +326,15 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $site = & $script:module $script:NewSite 'Paris'
             $site.AddSubnet('192.168.1.0/24')
             $site.AddSubnet('192.168.2.0/24')
-            $site.AddSiteLink('DEFAULTIPSITELINK')
+            $siteLink = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $site.AddSiteLink($siteLink)
 
             $result = $site.ToString()
 
             $result | Should -Match 'Site: Paris'
             $result | Should -Match 'Subnets: 2'
             $result | Should -Match 'SiteLinks: 1'
+            $result | Should -Match 'Cost: 100'
         }
 
         It 'Should handle site with no subnets or links' {
@@ -466,8 +483,10 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $site.AddSubnet('192.168.2.0/24')
 
             # Add site links
-            $site.AddSiteLink('DEFAULTIPSITELINK')
-            $site.AddSiteLink('PARIS-LONDON')
+            $siteLink1 = & $script:module $script:NewSiteLink 'DEFAULTIPSITELINK' 100 180
+            $siteLink2 = & $script:module $script:NewSiteLink 'PARIS-LONDON' 50 120
+            $site.AddSiteLink($siteLink1)
+            $site.AddSiteLink($siteLink2)
 
             # Add custom options
             $site.Options['ReplicationInterval'] = 180
@@ -483,14 +502,15 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
         It 'Should convert to hashtable and preserve all data' {
             $site = & $script:module $script:NewSite 'TestSite'
             $site.AddSubnet('10.0.0.0/8')
-            $site.AddSiteLink('TESTLINK')
+            $siteLink = & $script:module $script:NewSiteLink 'TESTLINK' 100 180
+            $site.AddSiteLink($siteLink)
             $site.Options['CustomOption'] = 'TestValue'
 
             $hashtable = $site.ToHashtable()
 
             $hashtable.Name | Should -Be 'TestSite'
             $hashtable.Subnets | Should -Contain '10.0.0.0/8'
-            $hashtable.SiteLinks | Should -Contain 'TESTLINK'
+            $hashtable.SiteLinks[0].Name | Should -Be 'TESTLINK'
             $hashtable.Options['CustomOption'] | Should -Be 'TestValue'
         }
 
@@ -504,8 +524,10 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $site.RemoveSubnet('192.168.2.0/24')
 
             # Add and remove site links
-            $site.AddSiteLink('LINK1')
-            $site.AddSiteLink('LINK2')
+            $siteLink1 = & $script:module $script:NewSiteLink 'LINK1' 100 180
+            $siteLink2 = & $script:module $script:NewSiteLink 'LINK2' 100 180
+            $site.AddSiteLink($siteLink1)
+            $site.AddSiteLink($siteLink2)
             $site.RemoveSiteLink('LINK1')
 
             # Verify final state
@@ -513,7 +535,7 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             $site.Subnets | Should -Contain '192.168.1.0/24'
             $site.Subnets | Should -Contain '192.168.3.0/24'
             $site.SiteLinks.Count | Should -Be 1
-            $site.SiteLinks | Should -Contain 'LINK2'
+            $site.SiteLinks[0].Name | Should -Be 'LINK2'
         }
     }
 
@@ -526,14 +548,14 @@ Describe 'SITE Class' -Tag 'Unit', 'Class' {
             { & $script:module $script:NewSite 'Site' 'Description' 'Location' } | Should -Not -Throw
         }
 
-        It 'Subnets should be ArrayList type' {
+        It 'Subnets should be List[string] type' {
             $site = & $script:module $script:NewSite
-            $site.Subnets.GetType().Name | Should -Be 'ArrayList'
+            $site.Subnets.GetType().Name | Should -Be 'List`1'
         }
 
-        It 'SiteLinks should be ArrayList type' {
+        It 'SiteLinks should be List[SITELINK] type' {
             $site = & $script:module $script:NewSite
-            $site.SiteLinks.GetType().Name | Should -Be 'ArrayList'
+            $site.SiteLinks.GetType().Name | Should -Be 'List`1'
         }
 
         It 'Options should be hashtable type' {
