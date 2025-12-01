@@ -7,11 +7,11 @@
     .DESCRIPTION
         This function configures the diagnostic options for a DNS server.
         It allows setting the log file path, maximum size, and enabling/disabling capture.
-        By default, it enables capture for:
-        - Protocols: UDP and TCP
-        - Direction: Inbound and Outbound
-        - Content: Queries, Transfers, Updates
-        - Type: Requests and Responses
+        By default, it enables logging for the following event types:
+        - Local Lookup Events
+        - Remote Server Events
+        - Recursive Lookup Events
+        - Zone Loading Events
 
     .PARAMETER ComputerName
         The name or IP address of the target DNS server.
@@ -114,7 +114,7 @@
                 # Add Enable-specific parameters to the hashtable
                 $cmdletParams['EnableLoggingToFile'] = $true
                 $cmdletParams['LogFilePath'] = $LogFilePath
-                $cmdletParams['MaxLogFileSize'] = $MaxSize
+                $cmdletParams['MaxMBFileSize'] = $MaxSize
 
                 # Enable logging for common diagnostic events
                 $cmdletParams['EnableLoggingForLocalLookupEvent'] = $true
