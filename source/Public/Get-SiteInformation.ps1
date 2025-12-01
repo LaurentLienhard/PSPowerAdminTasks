@@ -167,7 +167,7 @@ function Get-SiteInformation {
 
                     # Query site links for this site with detailed cost information
                     try {
-                        $siteLinks = Get-ADReplicationSiteLink -Filter "SiteList -eq '$($adSite.DistinguishedName)'" @adParams -Properties Cost, ReplicationFrequencyInMinutes, ReplaceWithInterSiteTopology, Description, WhenCreated, WhenChanged -ErrorAction SilentlyContinue
+                        $siteLinks = Get-ADReplicationSiteLink -Filter "SiteList -eq '$($adSite.DistinguishedName)'" @adParams -Properties Cost, ReplicationFrequencyInMinutes, Description, WhenCreated, WhenChanged -ErrorAction SilentlyContinue
 
                         if ($siteLinks) {
                             foreach ($link in $siteLinks) {
