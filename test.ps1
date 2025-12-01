@@ -1,7 +1,281 @@
-﻿VERBOSE: Starting AD Sites query...
-VERBOSE: Querying sites with filter: *
-VERBOSE: Processing site: DSD
-VERBOSE: Added 18 inter-site link(s) with cost information to site: DSD
-VERBOSE: Total inter-site cost: 2100
-Get-SiteInformation: Failed to retrieve site information for '*': Cannot find an overload for "Add" and the argument count: "1".
-VERBOSE: Query complete. Returning 0 site(s).
+﻿Function Find-UserLockoutsInformation
+{
+<#
+    .SYNOPSIS
+    Find information about locked user account
+
+    .DESCRIPTION
+    This fonction search for locked user on PDC Emulator and return the lock source
+    return :
+    User             : User1
+    DomainController : PDCEmulator
+    EventId          : 4740
+    LockoutTimeStamp : 8/3/2023 6:18:12 AM
+    Message          : A user account was locked out.
+    LockoutSource    : SourceComputer
+    To find the reason use : Get-UserLockoutReason -Computer SourceComputer -Identity User1
+
+    .PARAMETER Identity
+    User to check (by default all)
+
+    .PARAMETER DC
+    Domain controller on which you want to look up information (by default PDC Emulator)
+
+    .PARAMETER Credential
+    Administrator credential to connect to the DC
+
+    .EXAMPLE
+    Find-UserLockoutsInformation -Credential (Get-Credential MyAdminAccount)
+    Search information for all locked users in PDC Emulator
+
+    .EXAMPLE
+    Find-UserLockoutsInformation -Identity User1 -Credential (Get-Credential MyAdminAccount)
+    Search information for user User1 in PDC Emulator
+
+    .EXAMPLE
+    Find-UserLockoutsInformation -Identity User1 -DC MyDC1 -Credential (Get-Credential MyAdminAccount)
+    Search information for user User1 in specific domain controler MyDC1
+
+    .NOTES
+    General notes
+#>
+    [CmdletBinding(
+        DefaultParameterSetName = 'All'
+    )]
+    param (
+        [Parameter(
+            ValueFromPipeline = $true,
+            ParameterSetName = 'ByUser'
+        )]
+        [System.String]$Identity,
+        [System.String]$DC = (Get-ADDomain).PDCEmulator,
+        # Specifies the user account credentials to use when performing this task.
+        [Parameter()]
+        [ValidateNotNull()]
+        [System.Management.Automation.PSCredential]
+        [System.Management.Automation.Credential()]
+        $Credential = [System.Management.Automation.PSCredential]::Empty
+    )
+    Begin
+    {
+        Write-Verbose ('[{0:O}] Searching EventID : 4740 on Server : {1}   ' -f (get-date), $DC)
+        $WinEventArguments = @{
+            ComputerName    = $DC
+            FilterHashtable = @{LogName = 'Security'; Id = 4740 }
+        }
+
+        if ($PSBoundParameters.ContainsKey('Credential'))
+        {
+            $WinEventArguments['Credential'] = $Credential
+        }
+        try {
+            $LockedOutEvents = Get-WinEvent @WinEventArguments -ErrorAction Stop | Sort-Object -Property TimeCreated -Descending
+        }
+        catch {
+            if ($Error[-1].Exception.Message -like "*elevated user rights*") {
+                throw ('[{0:O}] You need an admin account. Please provide with the -Credential parameter' -f (get-date))
+            }
+        }
+
+        if ($LockedOutEvents) {
+            Write-Verbose ('[{0:O}] {1} event found' -f (get-date), $LockedOutEvents.Count)
+        } else {
+            throw ('[{0:O}] No event found' -f (get-date))
+        }
+    }
+
+    Process
+    {
+        switch ($PSCmdlet.ParameterSetName)
+        {
+            ByUser
+            {
+                Write-Verbose ('[{0:O}] Searching information for user : {1}' -f (get-date), $Identity)
+                $UserInfo = Get-ADUser -Identity $Identity
+                Foreach ($Event in $LockedOutEvents)
+                {
+                    If ($Event | Where-Object { $_.Properties[2].value -match $UserInfo.SID.Value })
+                    {
+
+                        $Event | Select-Object -Property @(
+                            @{Label = 'User'; Expression = { $_.Properties[0].Value } }
+                            @{Label = 'DomainController'; Expression = { $_.MachineName } }
+                            @{Label = 'EventId'; Expression = { $_.Id } }
+                            @{Label = 'LockoutTimeStamp'; Expression = { $_.TimeCreated } }
+                            @{Label = 'Message'; Expression = { $_.Message -split "`r" | Select-Object -First 1 } }
+                            @{Label = 'LockoutSource'; Expression = { $_.Properties[1].Value } }
+                        )
+                    }
+                }
+            }
+            All
+            {
+                Write-Verbose ('[{0:O}] Searching information for all user(s) ' -f (get-date))
+                Foreach ($Event in $LockedOutEvents)
+                {
+
+                    $Event | Select-Object -Property @(
+                        @{Label = 'User'; Expression = { $_.Properties[0].Value } }
+                        @{Label = 'DomainController'; Expression = { $_.MachineName } }
+                        @{Label = 'EventId'; Expression = { $_.Id } }
+                        @{Label = 'LockoutTimeStamp'; Expression = { $_.TimeCreated } }
+                        @{Label = 'Message'; Expression = { $_.Message -split "`r" | Select-Object -First 1 } }
+                        @{Label = 'LockoutSource'; Expression = { $_.Properties[1].Value } }
+                    )
+                }
+            }
+        }
+    }
+    End
+    {
+    }
+
+}
+
+
+function Get-UserLockoutReason
+{
+    <#
+    .SYNOPSIS
+    Search user lockout reason
+
+    .DESCRIPTION
+    You can search the reason of locked user on a specific computer
+    To find the source you can use : Find-UserLockoutsInformation -Identity User1 -DC MyDC1 -Credential (Get-Credential MyAdminAccount)
+
+    .PARAMETER Computer
+    User lockout source computer
+
+    .PARAMETER Identity
+    Name of the user for whom we are looking for the source of the lock
+
+    .PARAMETER Credential
+    Administrator credential to connect to the computer
+
+    .EXAMPLE
+    Get-UserLockoutReason -Computer ComputerSource -Identity User1 -Credential (Get-Credential MyAdminAccount)
+
+    .NOTES
+    General notes
+#>
+    [CmdletBinding(
+        DefaultParameterSetName = 'All'
+    )]
+    [OutputType([System.Object[]])]
+    param (
+        [System.String]$Computer,
+        [Parameter(
+            ValueFromPipeline = $true,
+            ParameterSetName = 'ByUser'
+        )]
+        [System.String]$Identity,
+        # Specifies the user account credentials to use when performing this task.
+        [Parameter()]
+        [ValidateNotNull()]
+        [System.Management.Automation.PSCredential]
+        [System.Management.Automation.Credential()]
+        $Credential = [System.Management.Automation.PSCredential]::Empty
+    )
+
+    begin
+    {
+        $LogonInfo = Import-PSFPowerShellDataFile -Path $PSScriptRoot/PSPowerAdminTasks.psd1
+        Write-Verbose ('[{0:O}] Searching EventID : 4625 on Computer : {1}   ' -f (get-date), $Computer)
+
+        $WinEventArguments = @{
+            ComputerName    = $Computer
+            FilterHashtable = @{LogName = 'Security'; Id = 4625 }
+        }
+
+        if ($PSBoundParameters.ContainsKey('Credential'))
+        {
+            $WinEventArguments['Credential'] = $Credential
+        }
+
+        $lockoutEvents = $null
+        Write-Verbose ('[{0:O}] Test if computer : {1} is alive ' -f (get-date), $Computer)
+        if (Test-Connection -ComputerName $Computer -Quiet -Count 2)
+        {
+            try
+            {
+                $lockoutEvents = Get-WinEvent @WinEventArguments -ErrorAction Stop
+            }
+            catch
+            {
+                if ($_.Exception.Message -match "No events were found that match the specified selection criteria")
+                {
+                    Write-Verbose ('[{0:O}] No logs found' -f (get-date))
+                }
+                if ($Error[-1].Exception.Message -like "*elevated user rights*")
+                {
+                    throw ('[{0:O}] You need an admin account. Please provide with the -Credential parameter' -f (get-date))
+                }
+            }
+        }
+        else
+        {
+            throw ('[{0:O}] computer {1} is not alive' -f (get-date), $Computer)
+        }
+
+        if ($lockoutEvents)
+        {
+            Write-Verbose ('[{0:O}] {1} event found' -f (get-date), $lockoutEvents.Count)
+        }
+        else
+        {
+            throw ('[{0:O}] No event found' -f (get-date))
+        }
+    }
+
+    process
+    {
+        switch ($PSCmdlet.ParameterSetName)
+        {
+            All
+            {
+                Write-Verbose ('[{0:O}] Searching information for all user(s) ' -f (get-date))
+                Foreach ($Event in $lockoutEvents)
+                {
+                    $eventXML = [xml]$event.ToXml()
+                    $Event | Select-Object -Property @(
+                        @{label = 'LockedUserName' ; Expression = {$eventXML.Event.EventData.Data[5].'#text'}}
+                        @{label = 'LogonType' ; Expression = {$LogonInfo.PrivateData.LogonType."$($eventXML.Event.EventData.Data[10].'#text')"}}
+                        @{label = 'LogonProcessName' ; Expression = {$eventXML.Event.EventData.Data[11].'#text'}}
+                        @{label = 'ProcessName' ; Expression = {$eventXML.Event.EventData.Data[18].'#text'}}
+                        @{label = 'FailureReason' ; Expression = {$LogonInfo.PrivateData.FailureReason."$($eventXML.Event.EventData.Data[8].'#text')"}}
+                        @{label = 'FailureStatus' ; Expression = {$LogonInfo.PrivateData.FailureType."$($eventXML.Event.EventData.Data[7].'#text')"}}
+                        @{label = 'FailureSubStatus' ; Expression = {$LogonInfo.PrivateData.FailureType."$($eventXML.Event.EventData.Data[9].'#text')"}}
+                    )
+                }
+            }
+            ByUser
+            {
+                Write-Verbose ('[{0:O}] Searching information for user : {1}' -f (get-date), $Identity)
+                Foreach ($Event in $lockoutEvents)
+                {
+                    $eventXML = [xml]$event.ToXml()
+                    If ($Event | Where-Object { $eventXML.Event.EventData.Data[5].'#text' -match $Identity })
+                    {
+                        $Event | Select-Object -Property @(
+                            @{label = 'LockedUserName' ; Expression = {$eventXML.Event.EventData.Data[5].'#text'}}
+                            @{label = 'LogonType' ; Expression = {$LogonInfo.PrivateData.LogonType."$($eventXML.Event.EventData.Data[10].'#text')"}}
+                            @{label = 'LogonProcessName' ; Expression = {$eventXML.Event.EventData.Data[11].'#text'}}
+                            @{label = 'ProcessName' ; Expression = {$eventXML.Event.EventData.Data[18].'#text'}}
+                            @{label = 'FailureReason' ; Expression = {$LogonInfo.PrivateData.FailureReason."$($eventXML.Event.EventData.Data[8].'#text')"}}
+                            @{label = 'FailureStatus' ; Expression = {$LogonInfo.PrivateData.FailureType."$($eventXML.Event.EventData.Data[7].'#text')"}}
+                            @{label = 'FailureSubStatus' ; Expression = {$LogonInfo.PrivateData.FailureType."$($eventXML.Event.EventData.Data[9].'#text')"}}
+                        )
+                    }
+
+                }
+
+            }
+        }
+
+
+    }
+
+    end
+    {
+    }
+}
