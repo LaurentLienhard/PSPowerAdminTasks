@@ -116,11 +116,11 @@
                 $cmdletParams['LogFilePath'] = $LogFilePath
                 $cmdletParams['MaxLogFileSize'] = $MaxSize
 
-                # Standard configuration (matches checking all boxes in GUI)
-                $cmdletParams['PacketDirection'] = @('Inbound', 'Outbound')
-                $cmdletParams['TransportProtocol'] = @('Udp', 'Tcp')
-                $cmdletParams['PacketContent'] = @('Query', 'Update', 'Notify')
-                $cmdletParams['PacketType'] = @('Question', 'AuthoritativeResponse')
+                # Enable logging for common diagnostic events
+                $cmdletParams['EnableLoggingForLocalLookupEvent'] = $true
+                $cmdletParams['EnableLoggingForRemoteServerEvent'] = $true
+                $cmdletParams['EnableLoggingForRecursiveLookupEvent'] = $true
+                $cmdletParams['EnableLoggingForZoneLoadingEvent'] = $true
 
                 if ($PSCmdlet.ShouldProcess($ComputerName, "Enable Debug Logging to $LogFilePath"))
                 {
