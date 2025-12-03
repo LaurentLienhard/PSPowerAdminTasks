@@ -76,28 +76,29 @@ function Get-RemoteGPResult
     #>
 
     [CmdletBinding()]
-    param(
+    param
+    (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
         [ValidateNotNullOrEmpty()]
         [string[]]$ComputerName,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [PSCredential]$Credential,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [string]$OutputPath,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [ValidateSet('Computer', 'User', 'Both')]
         [string]$Scope = 'Both',
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [switch]$Show,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [string]$UserName,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [int]$ThrottleLimit = 5
     )
 
@@ -208,7 +209,8 @@ function Get-RemoteGPResult
                         Write-Verbose "Generating Group Policy results report on $computer..."
 
                         $scriptBlock = {
-                            param($ScopeParam, $UserNameParam)
+                            param
+                            ([Parameter()]$ScopeParam, [Parameter()]$UserNameParam)
 
                             $remoteTempPath = Join-Path -Path $env:TEMP -ChildPath "gpresult_temp_$(Get-Random).html"
 
@@ -278,7 +280,8 @@ function Get-RemoteGPResult
                         # Clean up remote file
                         Write-Verbose "Cleaning up remote temporary file..."
                         Invoke-Command -Session $session -ScriptBlock {
-                            param($Path)
+                            param
+                            ([Parameter()]$Path)
                             if (Test-Path -Path $Path)
                             {
                                 Remove-Item -Path $Path -Force -ErrorAction SilentlyContinue
@@ -413,7 +416,8 @@ function Get-RemoteGPResult
                         Write-Verbose "Generating Group Policy results report on $computer..."
 
                         $scriptBlock = {
-                            param($ScopeParam, $UserNameParam)
+                            param
+                            ([Parameter()]$ScopeParam, [Parameter()]$UserNameParam)
 
                             $remoteTempPath = Join-Path -Path $env:TEMP -ChildPath "gpresult_temp_$(Get-Random).html"
 

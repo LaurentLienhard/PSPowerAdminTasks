@@ -44,19 +44,20 @@
     #>
 
     [CmdletBinding()]
-    param(
+    param
+    (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
         [ValidateNotNullOrEmpty()]
         [string[]]$ComputerName,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [PSCredential]$Credential,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [ValidateRange(1, 1000)]
         [int]$MaxEvents = 50,
 
-        [Parameter(Mandatory = $false)]
+        [Parameter()]
         [datetime]$StartTime = (Get-Date).AddDays(-30)
     )
 
