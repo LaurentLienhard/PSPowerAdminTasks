@@ -156,7 +156,7 @@ function Disable-CompromisedUser
             $LogPath = $env:Temp + '\Disable-CompromisedUser.csv'
             Write-Log -LogPath $LogPath -Message 'Starting Disable-CompromisedUser' -Severity Information -Console:$Console
         }
-        $Users = @()
+        $Users = [System.Collections.ArrayList]@()
 
         switch ($PSCmdlet.ParameterSetName)
         {
@@ -167,7 +167,7 @@ function Disable-CompromisedUser
                 {
                     try
                     {
-                        $Users += Get-ADUser -Identity $User -Properties SamAccountName,DisplayName,Enabled -ErrorAction Continue | Select-Object SamAccountName,DisplayName,Enabled
+                        [void]$Users.Add((Get-ADUser -Identity $User -Properties SamAccountName,DisplayName,Enabled -ErrorAction Continue))
                         if ($log) { write-log -LogPath $LogPath -Message "User $($User) found" -Severity Information -Console:$Console}
                     }
                     catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]
@@ -183,7 +183,7 @@ function Disable-CompromisedUser
                 {
                     try
                     {
-                        $Users += Get-ADUser -Identity $User -Properties SamAccountName,DisplayName,Enabled -ErrorAction Continue | Select-Object SamAccountName,DisplayName,Enabled
+                        [void]$Users.Add((Get-ADUser -Identity $User -Properties SamAccountName,DisplayName,Enabled -ErrorAction Continue))
                         if ($log) { write-log -LogPath $LogPath -Message "User $($User) found" -Severity Information -Console:$Console}
                     }
                     catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]
@@ -198,8 +198,7 @@ function Disable-CompromisedUser
                 foreach ($Organ in $OU)
                 {
                     if ($log) { write-log -LogPath $LogPath -Message "Retrieve AD User Account in $($Organ)" -Severity Information -Console:$Console}
-                    $Users += Get-ADUser -Filter * -SearchBase $Organ -Properties SamAccountName,DisplayName,Enabled | Select-Object SamAccountName,DisplayName,Enabled
-
+                    [void]$Users.AddRange((Get-ADUser -Filter * -SearchBase $Organ -Properties SamAccountName,DisplayName,Enabled))
                 }
             }
         }
@@ -207,7 +206,6 @@ function Disable-CompromisedUser
 
     process
     {
-
         $Arguments = @{}
         if ($PSBoundParameters.ContainsKey('Credential'))
         {
@@ -218,20 +216,21 @@ function Disable-CompromisedUser
         {
             if ($Check)
             {
-                if ($log) { write-log -LogPath $LogPath -Message "Check state for user $( $User.SamAccountName)" -Severity Information -Console:$Console}
-                if ($user.Enabled -eq "True")
+                if ($log) { write-log -LogPath $LogPath -Message "Check state for user $($user.SamAccountName)" -Severity Information -Console:$Console}
+                if ($user.Enabled -eq $true)
                 {
-                    if ($log) { write-log -LogPath $LogPath -Message "user $($User.SamAccountName) is enabled" -Severity Information -Console:$Console}
-                } else
-                {
-                    if ($log) { write-log -LogPath $LogPath -Message "user $($User.SamAccountName) is disabled" -Severity Information -Console:$Console}
+                    if ($log) { write-log -LogPath $LogPath -Message "user $($user.SamAccountName) is enabled" -Severity Information -Console:$Console}
                 }
-            } else
+                else
+                {
+                    if ($log) { write-log -LogPath $LogPath -Message "user $($user.SamAccountName) is disabled" -Severity Information -Console:$Console}
+                }
+            }
+            else
             {
-                $Arguments['Identity'] = $Users.SamAccountName
-
+                $Arguments['Identity'] = $user.SamAccountName
                 Disable-ADAccount @Arguments -Confirm:$false
-                if ($log) { write-log -LogPath $LogPath -Message "Disabeling user $($User.SamAccountName)" -Severity Information -Console:$Console}
+                if ($log) { write-log -LogPath $LogPath -Message "Disabling user $($user.SamAccountName)" -Severity Information -Console:$Console}
             }
         }
     }
