@@ -2,45 +2,7 @@
 {
     <#
     .SYNOPSIS
-        Retrieves reboot logs from a remote server.
-
-    .DESCRIPTION
-        This function queries the System event log of a remote server to
-        identify reboot events (ID 1074, 6006, 6008) and displays who
-        initiated the reboot and the reason if available.
-
-    .PARAMETER ComputerName
-        Name or IP address of the server to query.
-
-    .PARAMETER Credential
-        Credentials to connect to the remote server.
-        If not specified, uses the current user's credentials.
-
-    .PARAMETER MaxEvents
-        Maximum number of events to retrieve. Default: 50.
-
-    .PARAMETER StartTime
-        Start date for the event search. Default: 30 days back.
-
-    .EXAMPLE
-        Get-RemoteRebootLog -ComputerName "SERVER01"
-
-        Retrieves reboot logs from server SERVER01.
-
-    .EXAMPLE
-        Get-RemoteRebootLog -ComputerName "SERVER01" -Credential (Get-Credential)
-
-        Retrieves reboot logs with specific credentials.
-
-    .EXAMPLE
-        Get-RemoteRebootLog -ComputerName "SERVER01" -StartTime (Get-Date).AddDays(-7)
-
-        Retrieves reboot logs from the last 7 days.
-
-    .EXAMPLE
-        "SERVER01", "SERVER02" | Get-RemoteRebootLog
-
-        Retrieves reboot logs from multiple servers via pipeline.
+        Retrieves reboot logs from a remote server with readable reason codes.
     #>
 
     [CmdletBinding()]
@@ -65,12 +27,31 @@
     {
         Write-Verbose "Début de la recherche des logs de reboot"
 
-        # Event IDs for reboots:
-        # 1074 = Shutdown initiated by a user or application
-        # 6006 = Event Log service stopped (clean shutdown)
-        # 6008 = Unexpected shutdown (crash, power loss)
-        # 1076 = Shutdown reason (usually follows 1074)
+        # Event IDs for reboots
         $eventIDs = @(1074, 6006, 6008, 1076)
+
+        # Table de correspondance des codes de raison (Reason Codes)
+        # Basé sur les codes standard Windows System Shutdown Reason Codes
+        $reasonMap = @{
+            '0x00000000' = 'Autre (Non planifié)'
+            '0x40000000' = 'Autre (Non planifié)'
+            '0x80000000' = 'Autre (Planifié)'
+            '0x40010004' = 'Système : Maintenance (Planifié)'
+            '0x40000015' = 'OS : Mise à niveau (Planifié)'
+            '0x80020002' = 'OS : Récupération (Planifié)'
+            '0x80020010' = 'OS : Service pack (Planifié)'
+            '0x8003000f' = 'OS : Installation de correctif (Planifié)'
+            '0x80030002' = 'OS : Installation de correctif (Planifié)'
+            '0x41000000' = 'Problème matériel (Non planifié)'
+            '0x00050000' = 'Panne système (Erreur Stop - BSOD)'
+            '0x800000ff' = 'Système inactif / Veille'
+            '0x00040000' = 'Problème Application (Non planifié)'
+            '0x80040002' = 'Application : Installation (Planifié)'
+            '0x80040005' = 'Application : Maintenance (Planifié)'
+            '0x00020000' = 'Problème Sécurité'
+            '0x8002000e' = 'Sécurité : Mise à jour credential (Planifié)'
+            '0x20000000' = 'Arrêt via API (Logiciel)'
+        }
     }
 
     process
@@ -81,7 +62,6 @@
             {
                 Write-Verbose "Connexion à $computer..."
 
-                # Parameters for Get-WinEvent
                 $filterHash = @{
                     LogName   = 'System'
                     ID        = $eventIDs
@@ -100,14 +80,12 @@
                     $getWinEventParams.Add('Credential', $Credential)
                 }
 
-                # Retrieve events
                 $events = Get-WinEvent @getWinEventParams
 
                 if ($events)
                 {
                     Write-Verbose "Trouvé $($events.Count) événement(s) de reboot sur $computer"
 
-                    # Process and display events
                     $rebootLogs = foreach ($rebootEvent in $events)
                     {
                         $properties = @{
@@ -128,44 +106,41 @@
                                 # Shutdown initiated by user/application
                                 $properties.Type = 'Initiated Shutdown/Restart'
 
-                                # Extract information from XML message
                                 $xml = [xml]$rebootEvent.ToXml()
                                 $eventData = $xml.Event.EventData.Data
 
                                 if ($eventData)
                                 {
-                                    $properties.User = [string]$eventData[6]  # User who initiated
-                                    $properties.Process = [string]$eventData[0]  # Process
-                                    $properties.Reason = [string]$eventData[2]  # Reason code
-                                    $properties.Comment = [string]$eventData[5]  # Comment
+                                    $properties.User = $eventData[6].InnerText
+                                    $properties.Process = $eventData[0].InnerText
 
-                                    # Translate shutdown type
-                                    $shutdownType = [string]$eventData[4]
-                                    if ($shutdownType -eq 'restart')
-                                    {
-                                        $properties.Type = 'Restart'
+                                    # Gestion du code de raison
+                                    $rawReason = $eventData[2].InnerText
+                                    if ($reasonMap.ContainsKey($rawReason)) {
+                                        $properties.Reason = "$rawReason ($($reasonMap[$rawReason]))"
+                                    } else {
+                                        $properties.Reason = $rawReason
                                     }
-                                    elseif ($shutdownType -eq 'power off')
-                                    {
-                                        $properties.Type = 'Shutdown'
-                                    }
+
+                                    $properties.Comment = $eventData[5].InnerText
+
+                                    $shutdownType = $eventData[4].InnerText
+                                    if ($shutdownType -eq 'restart') { $properties.Type = 'Restart' }
+                                    elseif ($shutdownType -eq 'power off') { $properties.Type = 'Shutdown' }
                                 }
                             }
 
                             6006
                             {
-                                # Event Log service stopped (clean shutdown)
                                 $properties.Type = 'Shutdown propre'
                                 $properties.Reason = 'Service Event Log arrêté'
                             }
 
                             6008
                             {
-                                # Unexpected shutdown
                                 $properties.Type = 'Shutdown imprévu'
                                 $properties.Reason = 'Arrêt inattendu du système (crash/panne)'
 
-                                # Try to extract last boot time
                                 if ($rebootEvent.Properties)
                                 {
                                     $properties.Comment = "Dernière heure de boot connue: $($rebootEvent.Properties[0].Value) $($rebootEvent.Properties[1].Value)"
@@ -174,7 +149,7 @@
 
                             1076
                             {
-                                # Shutdown reason (additional information)
+                                # Shutdown reason (additional info)
                                 $properties.Type = 'Information raison shutdown'
 
                                 $xml = [xml]$rebootEvent.ToXml()
@@ -182,9 +157,17 @@
 
                                 if ($eventData)
                                 {
-                                    $properties.User = [string]$eventData[3]
-                                    $properties.Reason = [string]$eventData[4]
-                                    $properties.Comment = [string]$eventData[5]
+                                    $properties.User = $eventData[3].InnerText
+
+                                    # Gestion du code de raison
+                                    $rawReason = $eventData[4].InnerText
+                                    if ($reasonMap.ContainsKey($rawReason)) {
+                                        $properties.Reason = "$rawReason ($($reasonMap[$rawReason]))"
+                                    } else {
+                                        $properties.Reason = $rawReason
+                                    }
+
+                                    $properties.Comment = $eventData[5].InnerText
                                 }
                             }
                         }
@@ -192,9 +175,7 @@
                         [PSCustomObject]$properties
                     }
 
-                    # Return the objects for manipulation
                     Write-Output $rebootLogs
-
                 }
                 else
                 {
@@ -210,7 +191,7 @@
                 }
                 elseif ($_.Exception.Message -like "*The RPC server is unavailable*")
                 {
-                    Write-Error "Impossible de se connecter à $computer. Vérifiez que le serveur est accessible et que le firewall autorise WinRM/RPC."
+                    Write-Error "Impossible de se connecter à $computer. Vérifiez que le serveur est accessible (Firewall/WinRM)."
                 }
                 elseif ($_.Exception.Message -like "*Access is denied*")
                 {
@@ -218,7 +199,7 @@
                 }
                 else
                 {
-                    Write-Error "Erreur lors de la récupération des événements depuis $computer : $($_.Exception.Message)"
+                    Write-Error "Erreur sur $computer : $($_.Exception.Message)"
                 }
             }
         }
