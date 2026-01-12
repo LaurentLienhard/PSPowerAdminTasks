@@ -39,7 +39,6 @@ class COMPUTER
 
     COMPUTER([string]$ComputerName, [System.Management.Automation.PSCredential]$Credential)
     {
-        # BUG FIX 1 : Initialisation de la date
         $this.CheckTime = Get-Date
         $this.Credential = $Credential
         $this.Name = $ComputerName
@@ -61,10 +60,13 @@ class COMPUTER
         }
     }
 
+    # --- CORRECTION ICI : ON NE RESOUT PLUS L'IP LORS DU PING ---
     [void] TestIfComputerIsOnline([string]$ComputerName)
     {
         try
         {
+            # On fait juste un Ping simple pour le statut.
+            # On ne touche PAS à $this.IPv4Address ici pour éviter de récupérer l'IP NAT du VPN.
             if (Test-Connection -ComputerName $ComputerName -Count 1 -ErrorAction Stop)
             {
                 $this.Status = "Ping OK"
@@ -102,7 +104,10 @@ class COMPUTER
                 $this.CN = $Computer.CN
                 $this.Operatingsystem = $Computer.Operatingsystem
                 $this.Description = $Computer.Description
+
+                # C'est ICI que la seule vraie IP (AD) sera définie
                 $this.IPv4Address = $Computer.IPv4Address
+
                 $this.Created = $Computer.Created
                 $this.LastLogontimestamp = [DateTime]::FromFileTime($Computer.LastLogontimestamp)
                 $this.CanonicalName = $Computer.CanonicalName
@@ -117,20 +122,20 @@ class COMPUTER
             }
             catch
             {
-                #
+                # Silent catch
             }
             return $true
         }
         else
         {
+            # Si pas dans l'AD, on le dit explicitement
+            $this.IPv4Address = "Not in AD"
             return $false
         }
     }
 
     [Void] GetComputerLastHotFix ()
     {
-        # BUG FIX 2 (Préventif) : Utiliser $this.Name au lieu de $this.CN
-        # car si on n'a pas fait de requête AD, CN est vide.
         try
         {
             $HotfixParameter = @{
@@ -159,7 +164,7 @@ class COMPUTER
         try
         {
             $Parameter = @{
-                ComputerName = $this.Name # Fix: Name au lieu de CN
+                ComputerName = $this.Name
                 ErrorAction  = "Stop"
             }
             if ($null -ne $this.Credential)
@@ -181,7 +186,7 @@ class COMPUTER
             try
             {
                 $CmdParameter = @{
-                    ComputerName   = $this.Name # Fix: Name au lieu de CN
+                    ComputerName   = $this.Name
                     ErrorAction    = "Stop"
                     Authentication = "Kerberos"
                 }
@@ -207,16 +212,10 @@ class COMPUTER
         }
     }
 
-    # -------------------------------------------------------------------------
-    # DNS MANAGEMENT METHODS (ENGLISH)
-    # -------------------------------------------------------------------------
-
-    # 1. Retrieve Current Configuration
-    [void] GetDnsConfig ()
+[void] GetDnsConfig ()
     {
         if ($this.Status -eq "Ping OK")
         {
-            # BUG FIX 2 : Utiliser $this.Name ici aussi
             $CmdParameter = @{
                 ComputerName = $this.Name
                 ErrorAction  = "Stop"
@@ -225,43 +224,60 @@ class COMPUTER
 
             try
             {
-                # Retrieve unique IPs configured
-                $result = Invoke-Command @CmdParameter -ScriptBlock {
-                    $foundDns = @()
+                # On récupère un objet complexe (IP + DNS) depuis le serveur
+                $remoteData = Invoke-Command @CmdParameter -ScriptBlock {
+                    $resultData = @{ IP = $null; DNS = @() }
+
                     if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue) {
-                        # Modern Method
-                        $foundDns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object ServerAddresses -ne $null | Select-Object -ExpandProperty ServerAddresses
+                        # MODERN (Windows 2012+)
+                        # On cherche l'interface "Up" qui a une passerelle (souvent la principale)
+                        $iface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+                        if ($iface) {
+                            $dns = Get-DnsClientServerAddress -InterfaceIndex $iface.ifIndex -AddressFamily IPv4
+                            $ip  = Get-NetIPAddress -InterfaceIndex $iface.ifIndex -AddressFamily IPv4 | Select-Object -First 1
+
+                            $resultData.DNS = $dns.ServerAddresses
+                            $resultData.IP  = $ip.IPAddress
+                        }
                     }
                     else {
-                        # Legacy Method (WMI)
-                        $foundDns = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled = 'TRUE'" | Select-Object -ExpandProperty DNSServerSearchOrder
+                        # LEGACY (WMI)
+                        $adapter = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled = 'TRUE'" | Select-Object -First 1
+                        if ($adapter) {
+                            $resultData.DNS = $adapter.DNSServerSearchOrder
+                            $resultData.IP  = $adapter.IPAddress[0] # IPAddress est un tableau en WMI
+                        }
                     }
-                    return ($foundDns | Select-Object -Unique)
+                    return $resultData
                 }
 
-                if ($result) {
-                    $this.DnsServers = ($result -join ', ')
+                # Traitement du résultat DNS
+                if ($remoteData.DNS) {
+                    $this.DnsServers = ($remoteData.DNS | Select-Object -Unique) -join ', '
                 } else {
                     $this.DnsServers = "None"
                 }
+
+                # Traitement du résultat IP (C'est ici qu'on a la vraie IP LAN)
+                if ($remoteData.IP) {
+                    $this.IPv4Address = $remoteData.IP
+                } else {
+                    $this.IPv4Address = "Unknown IP"
+                }
             }
             catch {
-                $this.DnsServers = "Error Retrieving DNS"
-                # On capture l'erreur réelle pour le debug si besoin, mais on ne pollue pas la sortie standard
-                # Write-Warning ("Debug Error on {0}: {1}" -f $this.Name, $_.Exception.Message)
+                $this.DnsServers = "Error Retrieving Info"
+                $this.IPv4Address = "Connection Error"
             }
         }
     }
 
-    # 2. Replace ALL DNS servers with a new list (Main Method)
     [void] SetDnsServers ([string[]]$NewDnsList)
     {
         if ($this.Status -eq "Ping OK")
         {
-            Write-Verbose "Updating DNS servers on $($this.Name) with: $($NewDnsList -join ', ')..."
-
             $CmdParameter = @{
-                ComputerName = $this.Name # Fix: Name au lieu de CN
+                ComputerName = $this.Name
                 ErrorAction  = "Stop"
                 ArgumentList = (,$NewDnsList)
             }
@@ -285,7 +301,6 @@ class COMPUTER
                     }
                 }
                 $this.GetDnsConfig()
-                Write-Verbose "DNS updated successfully."
             }
             catch {
                 Write-Warning ('Error Setting DNS on {0}: {1}' -f $this.Name, $_.Exception.Message)
@@ -293,7 +308,6 @@ class COMPUTER
         }
     }
 
-    # Helper methods (Add/Remove/Modify) remain the same logical wrappers
     [void] AddDnsServer ([string]$NewDnsIP)
     {
         $this.GetDnsConfig()
@@ -301,7 +315,6 @@ class COMPUTER
         if ($this.DnsServers -and $this.DnsServers -ne "None" -and $this.DnsServers -ne "Error Retrieving DNS") {
             $currentList = $this.DnsServers -split ', '
         }
-
         if ($currentList -notcontains $NewDnsIP) {
             $currentList += $NewDnsIP
             $this.SetDnsServers($currentList)

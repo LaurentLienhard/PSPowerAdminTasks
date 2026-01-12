@@ -10,14 +10,11 @@ function Get-RemoteDnsServer
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    # 1. Initialisation de la liste AVANT le traitement
     Begin
     {
-        # On utilise une liste générique pour la performance (plus rapide que += sur un tableau)
         $AllResults = [System.Collections.Generic.List[PSObject]]::new()
     }
 
-    # 2. Traitement de chaque élément (accumulation)
     Process
     {
         foreach ($computer in $ComputerName)
@@ -32,17 +29,17 @@ function Get-RemoteDnsServer
                     $srvObject = [COMPUTER]::new($computer)
                 }
 
+                $srvObject.TestIfComputerExistInAd() | Out-Null
+
+
                 $srvObject.GetDnsConfig()
 
-                # Création de l'objet résultat
                 $resultObj = [PSCustomObject]@{
                     ComputerName = $srvObject.Name
+                    IPv4Address  = $srvObject.IPv4Address
                     DNSServers   = $srvObject.DnsServers
-                    Status       = $srvObject.Status
-                    CheckedAt    = $srvObject.CheckTime
                 }
 
-                # AJOUT à la liste (pas d'affichage ici)
                 $AllResults.Add($resultObj)
             }
             catch
@@ -52,7 +49,6 @@ function Get-RemoteDnsServer
         }
     }
 
-    # 3. Restitution du résultat unique À LA FIN
     End
     {
         return $AllResults
