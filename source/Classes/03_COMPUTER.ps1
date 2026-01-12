@@ -19,6 +19,9 @@ class COMPUTER
     [System.String]$HotFixInstalledOn
     [System.String]$LastBootUptime
     [System.String]$RebootNeeded
+
+    [System.String]$DnsServers
+
     HIDDEN [System.Management.Automation.PSCredential]$Credential
     #endregion <Properties>
 
@@ -29,29 +32,32 @@ class COMPUTER
 
     COMPUTER([string]$ComputerName)
     {
-        $This.CheckTime = Get-Date
+        $this.CheckTime = Get-Date
         $this.Name = $ComputerName
         $this.TestIfComputerIsOnline($ComputerName)
     }
 
     COMPUTER([string]$ComputerName, [System.Management.Automation.PSCredential]$Credential)
     {
-        $This.Credential = $Credential
+        # BUG FIX 1 : Initialisation de la date
+        $this.CheckTime = Get-Date
+        $this.Credential = $Credential
         $this.Name = $ComputerName
         $this.TestIfComputerIsOnline($ComputerName)
     }
     #endregion <Constructor>
 
     #region <Methods>
-    [void] GetALlInformation ()
+    [void] GetAllInformation ()
     {
         if ($this.Status -eq "Ping OK")
         {
-            $This.CheckTime = Get-Date
+            $this.CheckTime = Get-Date
             $this.TestIfComputerExistInAd()
             $this.GetComputerLastHotFix()
             $this.GetComputerLastBootUptime()
             $this.TestIfRebootNeeded()
+            $this.GetDnsConfig()
         }
     }
 
@@ -65,7 +71,7 @@ class COMPUTER
             }
             else
             {
-                $this.Status = "Ping KO"
+                $this.Status = "Ping Failed"
             }
         }
         catch
@@ -78,7 +84,7 @@ class COMPUTER
     {
         $Parameter = @{
             Properties  = 'Name', 'SamAccountName', 'CN', 'Operatingsystem', 'Description', 'IPv4Address', 'Created', 'LastLogontimestamp', 'CanonicalName', 'MemberOF'
-            Filter      = { Name -eq $This.Name }
+            Filter      = { Name -eq $this.Name }
             ErrorAction = "SilentlyContinue"
         }
 
@@ -106,44 +112,29 @@ class COMPUTER
                 }
                 else
                 {
-                    $This.MemberOF = "No WSUS Group"
+                    $this.MemberOF = "No WSUS Group"
                 }
-            }
-            catch [System.Management.Automation.MethodException]
-            {
-                Write-Output ('[{0:O}] ErrorID: {1}' -f (get-date), $_.Exception.Message)
-                Write-Output ('[{0:O}] Exception: {1}' -f (get-date), $_.FullyQualifiedErrorId)
-                Write-Output ('[{0:O}] Category: {1}' -f (get-date), (($_.Exception.GetType() | Select-Object -ExpandProperty UnderlyingSystemType).FullName))
             }
             catch
             {
-                Write-Output ('[{0:O}] ErrorID: {1}' -f (get-date), $_.Exception.Message)
-                Write-Output ('[{0:O}] Exception: {1}' -f (get-date), $_.FullyQualifiedErrorId)
-                Write-Output ('[{0:O}] Category: {1}' -f (get-date), (($_.Exception.GetType() | Select-Object -ExpandProperty UnderlyingSystemType).FullName))
+                #
             }
             return $true
         }
         else
         {
-            $this.SamAccountName = "Unknown"
-            $this.CN = "Unknown"
-            $this.Operatingsystem = "Unknown"
-            $this.Description = "Unknown"
-            $this.IPv4Address = "Unknown"
-            $this.Created = "Unknown"
-            $this.LastLogontimestamp = "Unknown"
-            $this.CanonicalName = "Unknown"
-            $this.MemberOF = "Unknown"
             return $false
         }
     }
 
     [Void] GetComputerLastHotFix ()
     {
+        # BUG FIX 2 (Préventif) : Utiliser $this.Name au lieu de $this.CN
+        # car si on n'a pas fait de requête AD, CN est vide.
         try
         {
             $HotfixParameter = @{
-                ComputerName = $this.CN
+                ComputerName = $this.Name
                 ErrorAction  = "Stop"
             }
             if ($null -ne $this.Credential)
@@ -155,21 +146,11 @@ class COMPUTER
             $this.HotFixDescription = $hotfix.Description
             $this.HotFixInstalledBy = $hotfix.InstalledBy
             $this.HotFixInstalledOn = $hotfix.InstalledOn
-
-        }
-        catch [System.UnauthorizedAccessException]
-        {
-            $this.HotfixID = "UnauthorizedAccessException"
-            $this.HotFixDescription = "UnauthorizedAccessException"
-            $this.HotFixInstalledBy = "UnauthorizedAccessException"
-            $this.HotFixInstalledOn = "UnauthorizedAccessException"
         }
         catch
         {
             $this.HotfixID = "Unknown"
             $this.HotFixDescription = "Unknown"
-            $this.HotFixInstalledBy = "Unknown"
-            $this.HotFixInstalledOn = "Unknown"
         }
     }
 
@@ -178,7 +159,7 @@ class COMPUTER
         try
         {
             $Parameter = @{
-                ComputerName = $this.CN
+                ComputerName = $this.Name # Fix: Name au lieu de CN
                 ErrorAction  = "Stop"
             }
             if ($null -ne $this.Credential)
@@ -189,9 +170,6 @@ class COMPUTER
         }
         catch
         {
-            Write-Output ('[{0:O}] ErrorID: {1}' -f (get-date), $_.Exception.Message)
-            Write-Output ('[{0:O}] Exception: {1}' -f (get-date), $_.FullyQualifiedErrorId)
-            Write-Output ('[{0:O}] Category: {1}' -f (get-date), (($_.Exception.GetType() | Select-Object -ExpandProperty UnderlyingSystemType).FullName))
             $this.LastBootUptime = "Unknown"
         }
     }
@@ -203,7 +181,7 @@ class COMPUTER
             try
             {
                 $CmdParameter = @{
-                    ComputerName   = $this.CN
+                    ComputerName   = $this.Name # Fix: Name au lieu de CN
                     ErrorAction    = "Stop"
                     Authentication = "Kerberos"
                 }
@@ -214,95 +192,145 @@ class COMPUTER
                 $this.RebootNeeded = Invoke-Command @CmdParameter -ScriptBlock {
                     if ((Get-ChildItem "HKLM:\Software\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" -ErrorAction SilentlyContinue) -or (Get-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" -ErrorAction SilentlyContinue) )
                     {
-                        write-output "YES"
+                        Write-Output "YES"
                     }
                     else
                     {
-                        Write-output "NO"
+                        Write-Output "NO"
                     }
                 }
             }
             catch
             {
-                $This.RebootNeeded = "Unknown"
+                $this.RebootNeeded = "Unknown"
             }
         }
     }
 
-    [void] GetLocalAdministrators ()
+    # -------------------------------------------------------------------------
+    # DNS MANAGEMENT METHODS (ENGLISH)
+    # -------------------------------------------------------------------------
+
+    # 1. Retrieve Current Configuration
+    [void] GetDnsConfig ()
     {
         if ($this.Status -eq "Ping OK")
         {
-            $LocalAdminParameter = @{
-                ComputerName = $this.CN
+            # BUG FIX 2 : Utiliser $this.Name ici aussi
+            $CmdParameter = @{
+                ComputerName = $this.Name
                 ErrorAction  = "Stop"
             }
-            if ($null -ne $this.Credential)
-            {
-                $LocalAdminParameter['Credential'] = $this.Credential
-            }
+            if ($null -ne $this.Credential) { $CmdParameter['Credential'] = $this.Credential }
+
             try
             {
-                Invoke-Command @LocalAdminParameter -ScriptBlock {
-                    try
-                    {
-                        # Get the members of the Administrators group using net localgroup
-                        $members = net localgroup Administrators
-                        # Filter out lines that contain SIDs
-                        $sids = $members | Select-String -Pattern "S-1-5-"
-
-                        # Check if any SIDs were found
-                        if ($sids)
-                        {
-                            [PSCustomObject]@{
-                                ComputerName    = $this.Name
-                                OSVersion       = Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty  Caption
-                                Member          = $_.Line
-                                ObjectClass     = ""
-                                PrincipalSource = ""
-                            }
-                        }
-                        else
-                        {
-                            $Members = Get-LocalGroupMember -Group Administrators -ErrorAction Stop
-                            ForEach ($Member in $Members)
-                            {
-                                [PSCustomObject]@{
-                                    ComputerName    = $env:COMPUTERNAME
-                                    OSVersion       = Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty  Caption
-                                    Member          = $Member.Name
-                                    ObjectClass     = $Member.ObjectClass
-                                    PrincipalSource = $Member.PrincipalSource
-                                }
-                            }
-                        }
+                # Retrieve unique IPs configured
+                $result = Invoke-Command @CmdParameter -ScriptBlock {
+                    $foundDns = @()
+                    if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue) {
+                        # Modern Method
+                        $foundDns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object ServerAddresses -ne $null | Select-Object -ExpandProperty ServerAddresses
                     }
-                    catch
-                    {
-                        [PSCustomObject]@{
-                            ComputerName    = $env:COMPUTERNAME
-                            OSVersion       = Get-WmiObject -Class Win32_OperatingSystem | Select-Object -ExpandProperty  Caption
-                            Member          = ""
-                            ObjectClass     = ""
-                            PrincipalSource = ""
-                        }
+                    else {
+                        # Legacy Method (WMI)
+                        $foundDns = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled = 'TRUE'" | Select-Object -ExpandProperty DNSServerSearchOrder
                     }
+                    return ($foundDns | Select-Object -Unique)
+                }
 
+                if ($result) {
+                    $this.DnsServers = ($result -join ', ')
+                } else {
+                    $this.DnsServers = "None"
                 }
             }
-            catch
-            {
-                Write-Output ('[{0:O}] ErrorID: {1}' -f (get-date), $_.Exception.Message)
-                Write-Output ('[{0:O}] Exception: {1}' -f (get-date), $_.FullyQualifiedErrorId)
-                Write-Output ('[{0:O}] Category: {1}' -f (get-date), (($_.Exception.GetType() | Select-Object -ExpandProperty UnderlyingSystemType).FullName))
-                [PSCustomObject]@{
-                    ComputerName    = $this.Name
-                    OSVersion       = ""
-                    Member          = ""
-                    ObjectClass     = ""
-                    PrincipalSource = ""
-                }
+            catch {
+                $this.DnsServers = "Error Retrieving DNS"
+                # On capture l'erreur réelle pour le debug si besoin, mais on ne pollue pas la sortie standard
+                # Write-Warning ("Debug Error on {0}: {1}" -f $this.Name, $_.Exception.Message)
             }
+        }
+    }
+
+    # 2. Replace ALL DNS servers with a new list (Main Method)
+    [void] SetDnsServers ([string[]]$NewDnsList)
+    {
+        if ($this.Status -eq "Ping OK")
+        {
+            Write-Verbose "Updating DNS servers on $($this.Name) with: $($NewDnsList -join ', ')..."
+
+            $CmdParameter = @{
+                ComputerName = $this.Name # Fix: Name au lieu de CN
+                ErrorAction  = "Stop"
+                ArgumentList = (,$NewDnsList)
+            }
+            if ($null -ne $this.Credential) { $CmdParameter['Credential'] = $this.Credential }
+
+            try {
+                Invoke-Command @CmdParameter -ScriptBlock {
+                    param([string[]]$DnsToSet)
+
+                    if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue) {
+                        $interfaces = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
+                        foreach ($iface in $interfaces) {
+                            Set-DnsClientServerAddress -InterfaceIndex $iface.ifIndex -ServerAddresses $DnsToSet -ErrorAction SilentlyContinue
+                        }
+                    }
+                    else {
+                        $adapters = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled = 'TRUE'"
+                        foreach ($adapter in $adapters) {
+                            $adapter.SetDNSServerSearchOrder($DnsToSet) | Out-Null
+                        }
+                    }
+                }
+                $this.GetDnsConfig()
+                Write-Verbose "DNS updated successfully."
+            }
+            catch {
+                Write-Warning ('Error Setting DNS on {0}: {1}' -f $this.Name, $_.Exception.Message)
+            }
+        }
+    }
+
+    # Helper methods (Add/Remove/Modify) remain the same logical wrappers
+    [void] AddDnsServer ([string]$NewDnsIP)
+    {
+        $this.GetDnsConfig()
+        $currentList = @()
+        if ($this.DnsServers -and $this.DnsServers -ne "None" -and $this.DnsServers -ne "Error Retrieving DNS") {
+            $currentList = $this.DnsServers -split ', '
+        }
+
+        if ($currentList -notcontains $NewDnsIP) {
+            $currentList += $NewDnsIP
+            $this.SetDnsServers($currentList)
+        }
+    }
+
+    [void] RemoveDnsServer ([string]$DnsIpToRemove)
+    {
+        $this.GetDnsConfig()
+        $currentList = @()
+        if ($this.DnsServers -and $this.DnsServers -ne "None") {
+            $currentList = $this.DnsServers -split ', '
+        }
+        if ($currentList -contains $DnsIpToRemove) {
+            $newList = $currentList | Where-Object { $_ -ne $DnsIpToRemove }
+            $this.SetDnsServers($newList)
+        }
+    }
+
+    [void] ModifyDnsServer ([string]$OldIp, [string]$NewIp)
+    {
+        $this.GetDnsConfig()
+        $currentList = @()
+        if ($this.DnsServers -and $this.DnsServers -ne "None") {
+            $currentList = $this.DnsServers -split ', '
+        }
+        if ($currentList -contains $OldIp) {
+            $newList = $currentList | ForEach-Object { if ($_ -eq $OldIp) { $NewIp } else { $_ } }
+            $this.SetDnsServers($newList)
         }
     }
     #endregion <Methods>
