@@ -109,7 +109,7 @@ Pester:
   #  - FunctionalQuality
   #  - TestQuality
   Tag: ~
-  CodeCoverageThreshold: 0
+  CodeCoverageThreshold: 80
   #CodeCoverageOutputFile: JaCoCo_$OsShortName.xml
   #CodeCoverageOutputFileEncoding: ascii
   # Use this if code coverage should be merged from several pipeline test jobs.
