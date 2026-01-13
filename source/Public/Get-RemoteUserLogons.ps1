@@ -21,7 +21,11 @@
     .PARAMETER Credential
         Credentials to connect to the servers.
     #>
-    param (
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseProcessBlockForPipelineCommand', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '')]
+    param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [string[]]$ComputerName,
 

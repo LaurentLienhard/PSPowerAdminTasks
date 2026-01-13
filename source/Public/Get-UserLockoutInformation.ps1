@@ -34,7 +34,8 @@ function Get-UserLockoutInformation
     [CmdletBinding(
         DefaultParameterSetName = 'All'
     )]
-    param (
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', '')]
+    param(
         [Parameter(
             ValueFromPipeline = $true,
             ParameterSetName = 'ByUser'

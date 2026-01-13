@@ -19,7 +19,9 @@ function Write-Log {
     Whether to also write to console
     #>
     [CmdletBinding()]
-    param (
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '')]
+    param(
         [Parameter(Mandatory = $true)]
         [String]$LogPath,
 

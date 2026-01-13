@@ -1,3 +1,28 @@
+<#
+.SYNOPSIS
+Manages dhcp information on remote computers.
+
+.DESCRIPTION
+This function performs dhcp management and retrieval tasks for remote computers.
+It supports multiple computers and includes error handling.
+
+.PARAMETER ComputerName
+Specifies the target computer name or names.
+
+.PARAMETER Credential
+Specifies the credentials to use for the connection.
+
+.EXAMPLE
+Get-RemoteDhcpScopes -ComputerName Server01
+
+.EXAMPLE
+Get-RemoteDhcpScopes -ComputerName Server01, Server02 -Credential (Get-Credential)
+
+.NOTES
+This function is part of the PSPowerAdminTasks module.
+Author: System Administrator
+Version: 1.0
+#>
 function Get-RemoteDhcpScopes
 {
     <#
@@ -16,8 +41,8 @@ function Get-RemoteDhcpScopes
     #>
 
     [CmdletBinding()]
-    param
-    (
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '')]
+    param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [string]$ComputerName,
 

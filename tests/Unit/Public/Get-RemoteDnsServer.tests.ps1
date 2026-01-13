@@ -16,27 +16,27 @@ AfterAll {
     Remove-Module -Name $script:moduleName -Force -ErrorAction SilentlyContinue
 }
 
-Describe 'Set-RemoteDnsServer' -Tag 'Unit' {
+Describe 'Get-RemoteDnsServer' -Tag 'Unit' {
 
     Context 'Function Availability' {
         It 'Should exist in the module' {
-            Get-Command -Name Set-RemoteDnsServer -Module $script:moduleName | Should -Not -BeNullOrEmpty
+            Get-Command -Name Get-RemoteDnsServer -Module $script:moduleName | Should -Not -BeNullOrEmpty
         }
 
         It 'Should be a function' {
-            (Get-Command -Name Set-RemoteDnsServer -Module $script:moduleName).CommandType | Should -Be 'Function'
+            (Get-Command -Name Get-RemoteDnsServer -Module $script:moduleName).CommandType | Should -Be 'Function'
         }
     }
 
     Context 'Parameter Definition' {
         
         It 'Should have defined parameters' {
-            $cmd = Get-Command -Name Set-RemoteDnsServer -Module $script:moduleName
+            $cmd = Get-Command -Name Get-RemoteDnsServer -Module $script:moduleName
             $cmd.Parameters.Count | Should -BeGreaterThan 0
         }
 
         It 'Should have parameter sets' {
-            $cmd = Get-Command -Name Set-RemoteDnsServer -Module $script:moduleName
+            $cmd = Get-Command -Name Get-RemoteDnsServer -Module $script:moduleName
             $cmd.ParameterSets | Should -Not -BeNullOrEmpty
         }
     }
@@ -44,12 +44,12 @@ Describe 'Set-RemoteDnsServer' -Tag 'Unit' {
     Context 'Help Documentation' {
         
         It 'Should have help documentation' {
-            $help = Get-Help -Name Set-RemoteDnsServer -ErrorAction SilentlyContinue
+            $help = Get-Help -Name Get-RemoteDnsServer -ErrorAction SilentlyContinue
             $help | Should -Not -BeNullOrEmpty
         }
 
         It 'Should have synopsis' {
-            $help = Get-Help -Name Set-RemoteDnsServer -ErrorAction SilentlyContinue
+            $help = Get-Help -Name Get-RemoteDnsServer -ErrorAction SilentlyContinue
             $help.Synopsis | Should -Not -BeNullOrEmpty
         }
     }

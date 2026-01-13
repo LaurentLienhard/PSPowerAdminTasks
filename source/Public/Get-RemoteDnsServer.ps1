@@ -1,8 +1,24 @@
+<#
+.SYNOPSIS
+Provides get remotednsserver functionality.
+
+.DESCRIPTION
+This function is used for administrative tasks. See Examples for usage.
+
+.PARAMETER ComputerName
+Specifies the target computer.
+
+.EXAMPLE
+Get-RemoteDnsServer -ComputerName Server01
+
+.NOTES
+This function is part of the PSPowerAdminTasks module.
+#>
 function Get-RemoteDnsServer
 {
     [CmdletBinding()]
-    param
-    (
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
+    param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [string[]]$ComputerName,
 

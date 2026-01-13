@@ -16,7 +16,7 @@ AfterAll {
     Remove-Module -Name $script:moduleName -Force -ErrorAction SilentlyContinue
 }
 
-Describe 'Write-Log' -Tag 'Unit' {
+Describe 'New-RebootReport' -Tag 'Unit' {
 
     Context 'Function Availability' {
         It 'Should module loads without errors' {

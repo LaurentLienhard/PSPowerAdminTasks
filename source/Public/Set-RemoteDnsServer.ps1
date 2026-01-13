@@ -1,8 +1,26 @@
+<#
+.SYNOPSIS
+Provides set remotednsserver functionality.
+
+.DESCRIPTION
+This function is used for administrative tasks. See Examples for usage.
+
+.PARAMETER ComputerName
+Specifies the target computer.
+
+.EXAMPLE
+Set-RemoteDnsServer -ComputerName Server01
+
+.NOTES
+This function is part of the PSPowerAdminTasks module.
+#>
 function Set-RemoteDnsServer
 {
     [CmdletBinding(DefaultParameterSetName = "All")]
-    param
-    (
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseBOMForUnicodeEncodedFile', '')]
+    param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [string[]]$ComputerName,
 

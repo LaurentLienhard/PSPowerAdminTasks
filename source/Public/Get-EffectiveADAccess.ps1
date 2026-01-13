@@ -122,7 +122,7 @@ function Get-EffectiveADAccess
             {
                 $PrincipalObject = Get-ADUser -Identity $Principal @ADParams -ErrorAction SilentlyContinue
             }
-            catch {}
+            catch { Write-Verbose 'Command failed, continuing...' }
 
             if (-not $PrincipalObject)
             {
@@ -130,7 +130,7 @@ function Get-EffectiveADAccess
                 {
                     $PrincipalObject = Get-ADGroup -Identity $Principal @ADParams -ErrorAction SilentlyContinue
                 }
-                catch {}
+                catch { Write-Verbose 'Command failed, continuing...' }
             }
 
             if (-not $PrincipalObject)
@@ -228,3 +228,4 @@ function Get-EffectiveADAccess
         Write-Verbose ('[{0:O}] Completed Get-EffectiveADAccess' -f (Get-Date))
     }
 }
+

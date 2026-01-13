@@ -1,5 +1,7 @@
 ﻿function New-RebootReport
 {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [object[]]$RebootEvents,
