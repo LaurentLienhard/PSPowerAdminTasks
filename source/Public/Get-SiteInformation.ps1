@@ -1,95 +1,9 @@
-function Get-SiteInformation {
-    <#
-    .SYNOPSIS
-        Retrieves Active Directory Sites and Services information and returns SITE class objects.
-
-    .DESCRIPTION
-        This function queries Active Directory Sites and Services to retrieve comprehensive information
-        about all AD sites or specific sites. The output is returned as an array of SITE class objects,
-        making it ideal for auditing AD site topology.
-
-        The function retrieves:
-        - Site name, description, and location
-        - Associated subnets
-        - Inter-site links with replication costs and frequency
-        - Creation and modification timestamps
-        - Distinguished names
-        - Total inter-site cost calculation
-
-    .PARAMETER Name
-        Specifies the name of one or more AD sites to retrieve.
-        Supports wildcards (*).
-        If not specified, all sites are returned.
-
-    .PARAMETER Server
-        Specifies the Active Directory Domain Controller to query.
-        If not specified, the function will query the default domain controller.
-
-    .PARAMETER Credential
-        A PSCredential object to authenticate to Active Directory.
-        If omitted, the current user's credentials will be used.
-
-    .EXAMPLE
-        Get-SiteInformation
-
-        Retrieves all AD sites and returns them as SITE objects.
-
-    .EXAMPLE
-        Get-SiteInformation -Name "Default-First-Site-Name"
-
-        Retrieves information for the specified site.
-
-    .EXAMPLE
-        Get-SiteInformation -Name "Site-*"
-
-        Retrieves all sites whose name starts with "Site-".
-
-    .EXAMPLE
-        Get-SiteInformation -Server "DC01.contoso.com" -Credential (Get-Credential)
-
-        Retrieves all sites from a specific domain controller using alternative credentials.
-
-    .EXAMPLE
-        $sites = Get-SiteInformation
-        $sites | Where-Object { $_.Subnets.Count -eq 0 } | Select-Object Name, Description
-
-        Gets all sites and filters those without any subnets assigned (potential configuration issue).
-
-    .EXAMPLE
-        $sites = Get-SiteInformation
-        $sites | Select-Object Name, TotalInterSiteCost, @{Name='LinkCount'; Expression={$_.SiteLinks.Count}} | Sort-Object TotalInterSiteCost -Descending
-
-        Retrieves all sites and displays them sorted by total inter-site cost (highest first).
-
-    .EXAMPLE
-        $sites = Get-SiteInformation
-        foreach ($site in $sites) {
-            $site.GetSiteLinksSummary()
-        }
-
-        Displays detailed summary of inter-site links for all sites, including cost and replication frequency.
-
-    .EXAMPLE
-        Get-SiteInformation | Export-Csv -Path "C:\Audit\ADSites.csv" -NoTypeInformation
-
-        Exports all site information to a CSV file for auditing purposes.
-
-    .OUTPUTS
-        SITE[]
-        Returns an array of SITE class objects.
-
-    .NOTES
-        Requires the ActiveDirectory PowerShell module.
-        Requires appropriate permissions to read Active Directory Sites and Services.
-    #>
-
+function Get-SiteInformation
+{
     [CmdletBinding()]
     [OutputType([SITE[]])]
     param (
-        [Parameter(Mandatory = $false,
-                   ValueFromPipeline = $true,
-                   ValueFromPipelineByPropertyName = $true,
-                   Position = 0)]
+        [Parameter(Mandatory = $false, Position = 0)]
         [SupportsWildcards()]
         [string[]]$Name = "*",
 
@@ -100,104 +14,107 @@ function Get-SiteInformation {
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    BEGIN {
-        # Verify ActiveDirectory module is available
-        $script:moduleAvailable = $true
-
-        if (-not (Get-Module -Name ActiveDirectory -ListAvailable)) {
-            $errorMessage = "The ActiveDirectory PowerShell module is required but not installed. Install RSAT tools to continue."
-            Write-Error -Message $errorMessage -Category NotInstalled
-            $script:moduleAvailable = $false
+    BEGIN
+    {
+        # Check module
+        if (-not (Get-Module -Name ActiveDirectory))
+        {
+            Import-Module ActiveDirectory -ErrorAction Stop
         }
 
-        # Import the module if not already loaded
-        if ($script:moduleAvailable -and -not (Get-Module -Name ActiveDirectory)) {
-            try {
-                Import-Module -Name ActiveDirectory -ErrorAction Stop
-                Write-Verbose "ActiveDirectory module imported successfully."
-            } catch {
-                Write-Error "Failed to import ActiveDirectory module: $($_.Exception.Message)"
-                $script:moduleAvailable = $false
-            }
-        }
-
-        # Build common parameters for AD cmdlets
-        $adParams = @{
-            ErrorAction = 'Stop'
-        }
-
-        if ($PSBoundParameters.ContainsKey('Server')) {
+        $adParams = @{ ErrorAction = 'Stop' }
+        if ($Server)
+        {
             $adParams['Server'] = $Server
         }
-
-        if ($PSBoundParameters.ContainsKey('Credential')) {
+        if ($Credential)
+        {
             $adParams['Credential'] = $Credential
         }
 
-        # Collection to store all SITE objects
         $siteCollection = [System.Collections.Generic.List[SITE]]::new()
 
-        Write-Verbose "Starting AD Sites query..."
+        # --- NEW: PRE-FETCH ALL DOMAIN CONTROLLERS ---
+        Write-Verbose "Pre-fetching all Domain Controllers..."
+        $DCTable = @{} # Hashtable for fast lookup: Key=SiteName, Value=List of DCs
+        try
+        {
+            $AllDCs = Get-ADDomainController -Filter * @adParams
+            foreach ($dc in $AllDCs)
+            {
+                if (-not $DCTable.ContainsKey($dc.Site))
+                {
+                    $DCTable[$dc.Site] = [System.Collections.Generic.List[string]]::new()
+                }
+                $DCTable[$dc.Site].Add($dc.HostName)
+            }
+        }
+        catch
+        {
+            Write-Warning "Could not retrieve Domain Controllers: $_"
+        }
+        # ---------------------------------------------
     }
 
-    PROCESS {
-        # Skip processing if module is not available
-        if (-not $script:moduleAvailable) {
-            return
-        }
-
-        foreach ($siteName in $Name) {
-            try {
-                Write-Verbose "Querying sites with filter: $siteName"
-
-                # Query AD Replication Sites
+    PROCESS
+    {
+        foreach ($siteName in $Name)
+        {
+            try
+            {
                 $filter = "Name -like '$siteName'"
                 $adSites = Get-ADReplicationSite -Filter $filter @adParams -Properties Description, Location, siteObjectBL, WhenCreated, WhenChanged
 
-                if ($null -eq $adSites) {
-                    Write-Warning "No sites found matching: $siteName"
+                if ($null -eq $adSites)
+                {
                     continue
                 }
 
-                foreach ($adSite in $adSites) {
-                    Write-Verbose "Processing site: $($adSite.Name)"
-
-                    # Create SITE object from AD object using the static method
+                foreach ($adSite in $adSites)
+                {
                     $siteObject = [SITE]::FromADObject($adSite)
 
-                    # Query site links for this site with detailed cost information
-                    try {
-                        $siteLinks = Get-ADReplicationSiteLink -Filter "SiteList -eq '$($adSite.DistinguishedName)'" @adParams -Properties Cost, ReplicationFrequencyInMinutes, Description, WhenCreated, WhenChanged, SiteList, Options -ErrorAction SilentlyContinue
+                    # --- NEW: MAP DOMAIN CONTROLLERS ---
+                    if ($DCTable.ContainsKey($adSite.Name))
+                    {
+                        foreach ($dcName in $DCTable[$adSite.Name])
+                        {
+                            $siteObject.AddDomainController($dcName)
+                        }
+                    }
 
-                        if ($siteLinks) {
-                            foreach ($link in $siteLinks) {
-                                # Create SITELINK object from AD object
+                    # Add Site Links (Keeping your existing logic logic)
+                    try
+                    {
+                        $siteLinks = Get-ADReplicationSiteLink -Filter "SiteList -eq '$($adSite.DistinguishedName)'" @adParams -Properties Cost, ReplicationFrequencyInMinutes, Description, SiteList
+                        if ($siteLinks)
+                        {
+                            foreach ($link in $siteLinks)
+                            {
                                 $siteLinkObject = [SITELINK]::FromADObject($link)
                                 $siteObject.AddSiteLink($siteLinkObject)
                             }
-                            Write-Verbose "Added $($siteLinks.Count) inter-site link(s) with cost information to site: $($adSite.Name)"
-                            Write-Verbose "Total inter-site cost: $($siteObject.TotalInterSiteCost)"
                         }
-                    } catch {
-                        Write-Warning "Could not retrieve inter-site links for site $($adSite.Name): $($_.Exception.Message)"
+                    }
+                    catch
+                    {
+                        Write-Warning "Link error: $_"
                     }
 
-                    # Add to collection
                     $siteCollection.Add($siteObject)
-                    Write-Verbose "Site '$($adSite.Name)' added to collection."
                 }
-
-            } catch {
-                Write-Error "Failed to retrieve site information for '$siteName': $($_.Exception.Message)"
+            }
+            catch
+            {
+                Write-Error "Site error: $_"
             }
         }
     }
 
-    END {
-        Write-Verbose "Query complete. Returning $($siteCollection.Count) site(s)."
-
-        # Return the collection as an array
-        if ($null -ne $siteCollection) {
+    END
+    {
+        if ($null -ne $siteCollection)
+        {
             return $siteCollection.ToArray()
         }
     }
