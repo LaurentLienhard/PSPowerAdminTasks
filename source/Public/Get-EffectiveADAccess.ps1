@@ -1,231 +1,184 @@
-
 function Get-EffectiveADAccess
 {
-    <#
-    .SYNOPSIS
-    Get effective permissions for a user or group on an Active Directory object
+<#
+.SYNOPSIS
+    Retrieves effective permissions (ACL) for a user or group on an Active Directory object.
 
-    .DESCRIPTION
-    Retrieves the effective permissions (Access Control List) for a specified user or group
-    on an Active Directory object. This includes direct permissions and inherited permissions
-    from parent containers.
+.DESCRIPTION
+    This function analyzes the Access Control List (ACL) of an AD object to determine if a specific user or group has permissions on it.
 
-    The function analyzes:
-    - Direct ACE (Access Control Entry) assignments
-    - Inherited permissions from organizational unit structure
-    - Group membership implications
-    - Special permissions (Create, Delete, Modify, etc.)
+    Advanced Features:
+    1. GUID Translation: Converts technical IDs (e.g., bf967a86...) into readable names (e.g., Computer, User).
+    2. Group Recursivity: If querying a User, it calculates all their group memberships (including nested groups) to find indirect permissions.
+    3. Smart Lookup (ANR): Accepts long names, email addresses, UPNs, or sAMAccountNames without crashing.
+    4. "Via" Column: Clearly shows if a permission comes from a direct assignment or via a specific group.
 
-    .PARAMETER Identity
-    The identity of the AD object to analyze (user, group, computer, OU, etc.)
-    Can be specified as Distinguished Name, ObjectGUID, or sAMAccountName
+.PARAMETER Identity
+    The target AD object to check permissions on (e.g., an OU, a Computer).
+    Accepts DistinguishedName, ObjectGUID, or Name.
 
-    .PARAMETER Principal
-    The user or group to check permissions for
-    Can be specified as Distinguished Name, ObjectGUID, sAMAccountName, or UPN
+.PARAMETER Principal
+    The User or Group to check permissions for.
+    Accepts sAMAccountName, Common Name (CN), UPN, or Email.
 
-    .PARAMETER Server
-    Active Directory server to connect to (by default the current domain controller)
+.PARAMETER Server
+    Optional: Specific Active Directory server to connect to.
 
-    .PARAMETER Credential
-    Administrator credential to connect to Active Directory
+.PARAMETER Credential
+    Optional: Credentials to use for the AD connection.
 
-    .EXAMPLE
-    Get-EffectiveADAccess -Identity "CN=Users,DC=contoso,DC=com" -Principal "contoso\Domain Admins"
-    Get effective permissions for Domain Admins group on the Users container
+.EXAMPLE
+    Get-EffectiveADAccess -Identity "OU=_Sleeping Computers,DC=dom,DC=com" -Principal "admin1"
 
-    .EXAMPLE
-    Get-EffectiveADAccess -Identity "CN=john.doe,CN=Users,DC=contoso,DC=com" -Principal "john.doe"
-    Get effective permissions for user john.doe on their own user object
+    Checks what permissions user 'admin1' has on the specified OU (including permissions via groups).
 
-    .EXAMPLE
-    Get-ADUser -Identity john.doe | Get-EffectiveADAccess -Principal "Domain Users"
-    Get effective permissions for Domain Users group on a specific user account
+.EXAMPLE
+    Get-EffectiveADAccess -Identity "CN=PC-001,OU=Workstations,DC=dom,DC=com" -Principal "HelpDesk Group" | Format-Table -AutoSize
 
-    .NOTES
-    Requires:
-    - Active Directory PowerShell module
-    - Permissions to read AD objects and their security descriptors
-    - Access to the object's SACL/DACL (requires administrative privileges for some objects)
+    Checks effective permissions for the HelpDesk group on a specific PC.
+
+.NOTES
+    Version: 1.6 (Final Robust - English)
 #>
     [CmdletBinding()]
     param (
-        [Parameter(
-            Mandatory = $true,
-            ValueFromPipelineByPropertyName = $true,
-            ValueFromPipeline = $true,
-            Position = 0
-        )]
-        [ValidateNotNullOrEmpty()]
-        [Alias('DistinguishedName', 'DN')]
-        [System.String]$Identity,
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, Position = 0)]
+        [string]$Identity,
 
-        [Parameter(
-            Mandatory = $true,
-            Position = 1
-        )]
-        [ValidateNotNullOrEmpty()]
-        [System.String]$Principal,
+        [Parameter(Mandatory = $true, Position = 1)]
+        [string]$Principal,
 
-        [Parameter()]
-        [System.String]$Server,
-
-        [Parameter()]
-        [ValidateNotNull()]
-        [System.Management.Automation.PSCredential]
-        [System.Management.Automation.Credential()]
-        $Credential = [System.Management.Automation.PSCredential]::Empty
+        [Parameter()][string]$Server,
+        [Parameter()][pscredential]$Credential
     )
 
     Begin
     {
-        Write-Verbose ('[{0:O}] Starting Get-EffectiveADAccess' -f (Get-Date))
-
-        # Setup AD parameters
-        $ADParams = @{
-            ErrorAction = 'Stop'
+        # --- HELPER: GUID to Readable Name Mapping ---
+        $GuidMap = @{
+            'bf967a86-0de6-11d0-a285-00aa003049e2' = 'Computer'
+            'bf967aba-0de6-11d0-a285-00aa003049e2' = 'User'
+            'bf967a9c-0de6-11d0-a285-00aa003049e2' = 'Group'
+            'bf967ab2-0de6-11d0-a285-00aa003049e2' = 'OrganizationalUnit'
+            'bf967aa5-0de6-11d0-a285-00aa003049e2' = 'PrintQueue'
+            'bf967aa8-0de6-11d0-a285-00aa003049e2' = 'Volume'
+            '00000000-0000-0000-0000-000000000000' = 'Any Object/Self'
         }
 
-        if ($PSBoundParameters.ContainsKey('Server'))
-        {
-            $ADParams['Server'] = $Server
-        }
-
-        if ($PSBoundParameters.ContainsKey('Credential'))
-        {
-            $ADParams['Credential'] = $Credential
-        }
-
-        Write-Verbose ('[{0:O}] Connecting to Active Directory' -f (Get-Date))
+        # Connection Setup
+        $ConnParams = @{}
+        if ($PSBoundParameters['Server']) { $ConnParams['Server'] = $Server }
+        if ($PSBoundParameters['Credential']) { $ConnParams['Credential'] = $Credential }
     }
 
     Process
     {
         try
         {
-            # Resolve the target AD object
-            Write-Verbose ('[{0:O}] Resolving AD object: {1}' -f (Get-Date), $Identity)
-            $ADObject = Get-ADObject -Identity $Identity @ADParams
+            # 1. Resolve Target Object
+            $ADObject = Get-ADObject -Identity $Identity @ConnParams -ErrorAction Stop
 
-            if (-not $ADObject)
-            {
-                throw "Could not find AD object: $Identity"
+            # 2. Resolve Principal (Who?) - Smart Lookup
+            Write-Verbose "Looking for Principal: $Principal"
+            $PrincipalObj = $null
+
+            # Attempt 1: Direct User
+            try { $PrincipalObj = Get-ADUser -Identity $Principal @ConnParams -ErrorAction Stop } catch {}
+
+            # Attempt 2: Direct Group
+            if (-not $PrincipalObj) { try { $PrincipalObj = Get-ADGroup -Identity $Principal @ConnParams -ErrorAction Stop } catch {} }
+
+            # Attempt 3: ANR Filter (Ambiguous Name Resolution) for long names/emails
+            if (-not $PrincipalObj) {
+                $PrincipalObj = Get-ADObject -Filter "anr -eq '$Principal'" @ConnParams -ErrorAction SilentlyContinue | Select-Object -First 1
+                # Reload full object to get properties
+                if ($PrincipalObj -and $PrincipalObj.ObjectClass -eq 'user') { $PrincipalObj = Get-ADUser -Identity $PrincipalObj.DistinguishedName @ConnParams }
+                elseif ($PrincipalObj -and $PrincipalObj.ObjectClass -eq 'group') { $PrincipalObj = Get-ADGroup -Identity $PrincipalObj.DistinguishedName @ConnParams }
             }
 
-            Write-Verbose ('[{0:O}] Found AD object: {1}' -f (Get-Date), $ADObject.DistinguishedName)
+            if (-not $PrincipalObj) { throw "Principal '$Principal' not found. Please check spelling." }
 
-            # Resolve the principal
-            Write-Verbose ('[{0:O}] Resolving principal: {1}' -f (Get-Date), $Principal)
-            $PrincipalObject = $null
+            # 3. Build Identity List (User + All Groups)
+            $IdentitiesToCheck = @()
+            if ($PrincipalObj.Sid) { $IdentitiesToCheck += $PrincipalObj.Sid.Value }
+            if ($PrincipalObj.SamAccountName) { $IdentitiesToCheck += $PrincipalObj.SamAccountName }
+            if ($PrincipalObj.Name) { $IdentitiesToCheck += $PrincipalObj.Name }
 
-            try
-            {
-                $PrincipalObject = Get-ADUser -Identity $Principal @ADParams -ErrorAction SilentlyContinue
-            }
-            catch { Write-Verbose 'Command failed, continuing...' }
+            if ($PrincipalObj.ObjectClass -eq 'user') {
+                Write-Verbose "Calculating recursive group membership..."
+                try {
+                    # Tightly wrapped to prevent 'null-valued expression' on weird groups
+                    $UserGroups = Get-ADAccountAuthorizationGroup -Identity $PrincipalObj.DistinguishedName @ConnParams -ErrorAction Stop
 
-            if (-not $PrincipalObject)
-            {
-                try
-                {
-                    $PrincipalObject = Get-ADGroup -Identity $Principal @ADParams -ErrorAction SilentlyContinue
-                }
-                catch { Write-Verbose 'Command failed, continuing...' }
-            }
+                    if ($UserGroups) {
+                        foreach ($grp in $UserGroups) {
+                            if ($grp.Sid) { $IdentitiesToCheck += $grp.Sid.Value }
+                            if ($grp.SamAccountName) { $IdentitiesToCheck += $grp.SamAccountName }
 
-            if (-not $PrincipalObject)
-            {
-                throw "Could not resolve principal: $Principal"
-            }
-
-            Write-Verbose ('[{0:O}] Resolved principal: {1}' -f (Get-Date), $PrincipalObject.DistinguishedName)
-
-            # Get security descriptor
-            Write-Verbose ('[{0:O}] Retrieving security descriptor' -f (Get-Date))
-            $ACLPath = "AD:\$($ADObject.DistinguishedName)"
-            $ACL = Get-ACL -Path $ACLPath
-            $SecurityDescriptor = $ACL.Access
-
-            if (-not $SecurityDescriptor)
-            {
-                Write-Warning ('[{0:O}] No security descriptor found for {1}' -f (Get-Date), $ADObject.DistinguishedName)
-                return
-            }
-
-            # Process ACEs
-            $EffectivePermissions = @()
-
-            foreach ($ACE in $SecurityDescriptor)
-            {
-                # Check if this ACE applies to the principal or their groups
-                $AppliesTo = $false
-
-                if ($ACE.IdentityReference.Value -eq $PrincipalObject.SamAccountName -or
-                    $ACE.IdentityReference.Value -eq $PrincipalObject.UserPrincipalName -or
-                    $ACE.IdentityReference -like "*$($PrincipalObject.Name)*")
-                {
-                    $AppliesTo = $true
-                }
-                else
-                {
-                    # Check group membership if principal is a user
-                    if ($PrincipalObject.ObjectClass -eq 'user')
-                    {
-                        try
-                        {
-                            $PrincipalGroups = Get-ADPrincipalGroupMembership -Identity $PrincipalObject.DistinguishedName @ADParams -ErrorAction SilentlyContinue
-                            if ($PrincipalGroups -and ($PrincipalGroups.DistinguishedName -contains $ACE.IdentityReference.Value -or
-                                $PrincipalGroups.SamAccountName -contains ($ACE.IdentityReference.Value -split '\\')[1]))
-                            {
-                                $AppliesTo = $true
+                            # Add "DOMAIN\Group" format
+                            if ($grp.DistinguishedName -and $grp.DistinguishedName -match ',DC=') {
+                                try {
+                                    $DomainPart = $grp.DistinguishedName.Split(',DC=')[1].ToUpper()
+                                    $IdentitiesToCheck += "$DomainPart\$($grp.SamAccountName)"
+                                } catch {}
                             }
                         }
-                        catch
-                        {
-                            Write-Verbose ('[{0:O}] Could not retrieve group membership: {1}' -f (Get-Date), $_.Exception.Message)
-                        }
                     }
                 }
+                catch {
+                    Write-Verbose "Group calculation warning (non-critical): $_"
+                }
+            }
 
-                if ($AppliesTo)
+            # 4. Get and Scan ACL
+            $ACL = Get-ACL -Path "AD:\$($ADObject.DistinguishedName)"
+            if (-not $ACL.Access) { return }
+
+            $Effective = @()
+
+            foreach ($ACE in $ACL.Access)
+            {
+                $IsMatch = $false
+                $AceIdentity = $ACE.IdentityReference.Value
+
+                # Check if ACE is in our list
+                if ($IdentitiesToCheck -contains $AceIdentity) { $IsMatch = $true }
+                else {
+                    # Fallback check for ShortName (Group vs DOMAIN\Group)
+                    $AceShortName = $AceIdentity.Split('\')[-1]
+                    if ($IdentitiesToCheck -contains $AceShortName) { $IsMatch = $true }
+                }
+
+                if ($IsMatch)
                 {
-                    $PermissionObject = [PSCustomObject]@{
-                        ADObject            = $ADObject.DistinguishedName
-                        Principal           = $PrincipalObject.Name
-                        PrincipalType       = $PrincipalObject.ObjectClass
-                        IdentityReference   = $ACE.IdentityReference.Value
-                        AccessControlType   = $ACE.AccessControlType
-                        ActiveDirectoryRights = $ACE.ActiveDirectoryRights
-                        InheritanceFlags    = $ACE.InheritanceFlags
-                        PropagationFlags    = $ACE.PropagationFlags
-                        IsInherited         = $ACE.IsInherited
-                        ObjectType          = $ACE.ObjectType
-                        InheritedObjectType = $ACE.InheritedObjectType
+                    # Translation Logic
+                    $Type = $GuidMap[$ACE.ObjectType.ToString()]
+                    if (-not $Type) { $Type = if($ACE.ObjectType -eq '00000000-0000-0000-0000-000000000000') {"All Objects"} else {$ACE.ObjectType} }
+
+                    $Scope = "This object only"
+                    if ($ACE.InheritanceFlags -ne 'None') { $Scope = "This object and descendants" }
+                    if ($ACE.PropagationFlags -eq 'InheritOnly') { $Scope = "Descendants only" }
+
+                    # Determine 'Via' (Did it come from a group?)
+                    $Via = "Direct Assignment"
+                    $AceShortName = $AceIdentity.Split('\')[-1]
+                    if ($PrincipalObj.ObjectClass -eq 'user' -and $AceShortName -ne $PrincipalObj.SamAccountName) {
+                        $Via = "Group: $AceShortName"
                     }
 
-                    $EffectivePermissions += $PermissionObject
+                    $Effective += [PSCustomObject]@{
+                        'Principal'   = $PrincipalObj.Name
+                        'Via'         = $Via
+                        'Access'      = $ACE.AccessControlType
+                        'Permissions' = $ACE.ActiveDirectoryRights
+                        'AppliesTo'   = $Type
+                        'Scope'       = $Scope
+                    }
                 }
             }
 
-            if ($EffectivePermissions.Count -eq 0)
-            {
-                Write-Verbose ('[{0:O}] No effective permissions found for {1} on {2}' -f (Get-Date), $Principal, $Identity)
-            }
-            else
-            {
-                Write-Verbose ('[{0:O}] Found {1} effective permission(s)' -f (Get-Date), $EffectivePermissions.Count)
-                $EffectivePermissions
-            }
+            if ($Effective) { $Effective } else { Write-Verbose "No effective permissions found." }
         }
-        catch
-        {
-            Write-Error ('[{0:O}] Error retrieving effective access: {1}' -f (Get-Date), $_.Exception.Message)
-        }
-    }
-
-    End
-    {
-        Write-Verbose ('[{0:O}] Completed Get-EffectiveADAccess' -f (Get-Date))
+        catch { Write-Error $_.Exception.Message }
     }
 }
-
