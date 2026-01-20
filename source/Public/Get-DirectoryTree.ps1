@@ -1,9 +1,33 @@
-function Get-DirectoryTree
+﻿function Get-DirectoryTree
 {
     <#
     .SYNOPSIS
     Get a tree view of directory and file structure from a remote or local server.
-    v4 Fix: Filters out directories during size calculation to prevent property errors.
+
+    .DESCRIPTION
+    Efficiently scans directory structure with support for depth limiting, item filtering,
+    and remote execution. Uses optimized iterative traversal instead of recursion for better performance.
+
+    .PARAMETER Path
+    Root path to scan
+
+    .PARAMETER ComputerName
+    Remote computer to execute on
+
+    .PARAMETER Depth
+    Maximum depth to traverse (-1 for unlimited)
+
+    .PARAMETER ItemType
+    Filter: Both, Files, or Directories
+
+    .PARAMETER Credential
+    Credentials for remote execution
+
+    .PARAMETER TreeView
+    Display formatted tree output
+
+    .PARAMETER SkipSize
+    Skip size calculation for better performance on large trees
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param (
@@ -28,7 +52,10 @@ function Get-DirectoryTree
         $Credential = [System.Management.Automation.PSCredential]::Empty,
 
         [Parameter()]
-        [Switch]$TreeView
+        [Switch]$TreeView,
+
+        [Parameter()]
+        [Switch]$SkipSize
     )
 
     Begin
@@ -52,80 +79,97 @@ function Get-DirectoryTree
             $InvokeParams['Credential'] = $Credential
         }
 
-        # --- SCRIPTBLOCK PRINCIPAL ---
+        # --- SCRIPTBLOCK PRINCIPAL (OPTIMISÉ) ---
         $TreeBuilderScript = {
             param (
                 [String]$RootPath,
                 [Int32]$MaxDepth,
-                [String]$ItemTypeFilter
+                [String]$ItemTypeFilter,
+                [Bool]$SkipSizeCalc
             )
 
-            function Get-TreeItems
-            {
-                param (
-                    [String]$CurrentPath,
-                    [Int32]$CurrentDepth
-                )
+            # Parcours itératif avec Queue pour éviter la récursion profonde
+            $queue = [System.Collections.Generic.Queue[PSObject]]::new()
+            $sizeCache = @{}
 
-                if ($MaxDepth -ne -1 -and $CurrentDepth -gt $MaxDepth) { return }
+            # Ajouter le chemin racine
+            $queue.Enqueue([PSCustomObject]@{
+                Path  = $RootPath
+                Depth = 1
+            })
 
-                try
-                {
-                    # On récupère le contenu du dossier courant
-                    $items = Get-ChildItem -Path $CurrentPath -Force -ErrorAction SilentlyContinue
-                    if (-not $items) { return }
+            while ($queue.Count -gt 0) {
+                $current = $queue.Dequeue()
 
-                    foreach ($item in $items)
-                    {
+                # Vérification de la profondeur
+                if ($MaxDepth -ne -1 -and $current.Depth -gt $MaxDepth) {
+                    continue
+                }
+
+                try {
+                    # Récupération UNE SEULE FOIS des items du dossier
+                    $items = @(Get-ChildItem -Path $current.Path -Force -ErrorAction SilentlyContinue)
+
+                    if ($items.Count -eq 0) { continue }
+
+                    foreach ($item in $items) {
+                        # Détection cross-platform du type (Directory vs File)
+                        $isDirectory = ($item.Attributes -band [System.IO.FileAttributes]::Directory) -eq [System.IO.FileAttributes]::Directory
+
                         # Filtrage selon la demande utilisateur
-                        if ($ItemTypeFilter -eq 'Directories' -and -not $item.PSIsContainer) { continue }
-                        if ($ItemTypeFilter -eq 'Files' -and $item.PSIsContainer) { continue }
+                        if ($ItemTypeFilter -eq 'Directories' -and -not $isDirectory) {
+                            continue
+                        }
+                        if ($ItemTypeFilter -eq 'Files' -and $isDirectory) {
+                            continue
+                        }
 
-                        # --- CALCUL DE LA TAILLE (CORRECTION ICI) ---
+                        # Calcul de taille optimisé (avec cache)
                         $itemSize = 0
-                        try {
-                            if ($item.PSIsContainer) {
-                                # On ajoute "-File" pour ne mesurer que les fichiers et éviter l'erreur sur les dossiers
-                                $stats = Get-ChildItem -Path $item.FullName -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-                                $itemSize = if ($stats.Sum) { $stats.Sum } else { 0 }
+                        if (-not $SkipSizeCalc) {
+                            if ($isDirectory) {
+                                $cacheKey = $item.FullName
+                                if (-not $sizeCache.ContainsKey($cacheKey)) {
+                                    try {
+                                        $stats = @(Get-ChildItem -Path $item.FullName -Recurse -Force -File -ErrorAction SilentlyContinue) |
+                                                 Measure-Object -Property Length -Sum
+                                        $sizeCache[$cacheKey] = if ($stats.Sum) { $stats.Sum } else { 0 }
+                                    }
+                                    catch {
+                                        $sizeCache[$cacheKey] = 0
+                                    }
+                                }
+                                $itemSize = $sizeCache[$cacheKey]
                             }
                             else {
                                 $itemSize = $item.Length
                             }
-                        } catch {
-                            $itemSize = 0
                         }
 
-                        # Création de l'objet
-                        $resultObj = [PSCustomObject]@{
+                        # Création optimisée de l'objet (propriétés ordonnées)
+                        [PSCustomObject]@{
                             Name          = $item.Name
                             FullName      = $item.FullName
-                            Type          = if ($item.PSIsContainer) { 'Directory' } else { 'File' }
+                            Type          = if ($isDirectory) { 'Directory' } else { 'File' }
                             Size          = $itemSize
-                            Depth         = $CurrentDepth
+                            Depth         = $current.Depth
                             LastWriteTime = $item.LastWriteTime
                             Accessible    = $true
                         }
 
-                        # Émission dans le pipeline
-                        $resultObj
-
-                        # Récursion
-                        if ($item.PSIsContainer)
-                        {
-                            Get-TreeItems -CurrentPath $item.FullName -CurrentDepth ($CurrentDepth + 1)
+                        # Ajouter à la queue si c'est un dossier (parcours en largeur)
+                        if ($isDirectory) {
+                            $queue.Enqueue([PSCustomObject]@{
+                                Path  = $item.FullName
+                                Depth = $current.Depth + 1
+                            })
                         }
                     }
                 }
-                catch
-                {
-                    # On ignore les erreurs d'accès pour ne pas casser l'arbre entier
-                    Write-Warning "Access denied or error on '$CurrentPath': $_"
+                catch {
+                    Write-Warning "Access denied or error on '$($current.Path)': $_"
                 }
             }
-
-            # Lancement initial
-            Get-TreeItems -CurrentPath $RootPath -CurrentDepth 1
         }
     }
 
@@ -147,12 +191,12 @@ function Get-DirectoryTree
                 if ($InvokeParams.ContainsKey('ComputerName'))
                 {
                     Write-Verbose "Remote execution on $ComputerName"
-                    $results = Invoke-Command @InvokeParams -ScriptBlock $TreeBuilderScript -ArgumentList $Path, $Depth, $ItemType
+                    $results = Invoke-Command @InvokeParams -ScriptBlock $TreeBuilderScript -ArgumentList $Path, $Depth, $ItemType, $SkipSize
                 }
                 else
                 {
                     Write-Verbose "Local execution"
-                    $results = & $TreeBuilderScript -RootPath $Path -MaxDepth $Depth -ItemTypeFilter $ItemType
+                    $results = & $TreeBuilderScript -RootPath $Path -MaxDepth $Depth -ItemTypeFilter $ItemType -SkipSizeCalc $SkipSize
                 }
 
                 # --- AFFICHAGE ---
@@ -160,40 +204,36 @@ function Get-DirectoryTree
                 {
                     if ($TreeView)
                     {
-                        Write-Host "`nArborescence pour : " -NoNewline
-                        Write-Host "$Path" -ForegroundColor Cyan
+                        Write-Information "`nArborescence pour : $Path" -InformationAction Continue
                         if ($InvokeParams.ContainsKey('ComputerName')) {
-                             Write-Host " (sur $($InvokeParams['ComputerName']))" -ForegroundColor Magenta
+                            Write-Information " (sur $($InvokeParams['ComputerName']))" -InformationAction Continue
                         }
-                        Write-Host "----------------------------------------" -ForegroundColor DarkGray
+                        Write-Information "----------------------------------------" -InformationAction Continue
 
-                        $results | Sort-Object FullName | ForEach-Object {
+                        # Affichage direct en parcourant les résultats (sans sort global)
+                        $resultList = @($results)
+                        $resultList | Sort-Object Depth, FullName | ForEach-Object {
                             $Item = $_
-                            $SizeStr = Get-HumanSize $Item.Size
+                            $SizeStr = if (-not $SkipSize) { Get-HumanSize $Item.Size } else { "N/A" }
 
                             if ($Item.Depth -eq 1) {
-                                Write-Host "$($Item.Name) " -NoNewline -ForegroundColor Cyan
-                                Write-Host "[$SizeStr]" -ForegroundColor Green
+                                Write-Information "$($Item.Name) [$SizeStr]" -InformationAction Continue
                             }
                             else {
                                 $Indent = "    |" * ($Item.Depth - 2) + "----"
                                 if ($Item.Type -eq 'Directory') {
-                                    Write-Host "$Indent " -NoNewline -ForegroundColor DarkGray
-                                    Write-Host "$($Item.Name) " -NoNewline -ForegroundColor Yellow
-                                    Write-Host "[$SizeStr]" -ForegroundColor Green
+                                    Write-Information "$Indent $($Item.Name) [$SizeStr]" -InformationAction Continue
                                 }
                                 else {
-                                    Write-Host "$Indent " -NoNewline -ForegroundColor DarkGray
-                                    Write-Host "$($Item.Name) " -NoNewline -ForegroundColor White
-                                    Write-Host "($SizeStr)" -ForegroundColor Gray
+                                    Write-Information "$Indent $($Item.Name) ($SizeStr)" -InformationAction Continue
                                 }
                             }
                         }
-                        Write-Host ""
+                        Write-Information "" -InformationAction Continue
                     }
                     else
                     {
-                        $results | Sort-Object FullName
+                        $results | Sort-Object Depth, FullName
                     }
                 }
                 else

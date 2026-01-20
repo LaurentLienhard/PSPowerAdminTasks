@@ -30,7 +30,8 @@ Describe 'Get-DirectoryTree' {
 
     Context 'Local path processing' {
         It 'Should return error for non-existent path' {
-            { Get-DirectoryTree -Path 'C:\NonExistentPath_12345' -ErrorAction Stop } | Should -Throw
+            $nonExistentPath = if ($IsWindows) { 'C:\NonExistentPath_12345' } else { '/tmp/NonExistentPath_12345_xyz' }
+            { Get-DirectoryTree -Path $nonExistentPath -ErrorAction Stop } | Should -Throw
         }
 
         It 'Should return object with required properties' {
