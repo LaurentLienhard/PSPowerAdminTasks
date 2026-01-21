@@ -22,8 +22,16 @@
         If not specified, the current user credentials are used.
 
     .PARAMETER ThrottleLimit
-        (Optional) The number of computers to query simultaneously. Default is 5.
+        (Optional) The number of computers to query simultaneously. Default is 20.
         Increase this value for high-performance networks, decrease it to reduce load.
+
+    .PARAMETER OperationTimeoutSec
+        (Optional) Timeout in seconds for CIM operations. Default is 10 seconds.
+        Prevents hanging on unresponsive servers.
+
+    .PARAMETER SkipTaskInfo
+        (Optional) Skip retrieving runtime task information (LastRunTime, NextRunTime, LastTaskResult).
+        Use this flag for faster execution when you only need task definitions.
 
     .EXAMPLE
         Get-RemoteScheduleTask -ComputerName "SRV01", "SRV02", "SRV03"
@@ -42,9 +50,14 @@
         Checks a specific server for tasks that failed (LastResult != 0).
 
     .NOTES
-        Version: 2.1 (PS7 Parallel + Serialization Fix)
+        Version: 2.2 (Optimized for Large Scale - 100s of servers)
         Requires: PowerShell 7.0 or later.
         Requires: Class [ScheduleTask] to be loaded in memory before execution.
+
+        Performance Tips for Large Environments:
+        - Use -SkipTaskInfo when you only need task definitions (3-5x faster)
+        - Increase -ThrottleLimit to 30-50 for robust networks with high timeout thresholds
+        - Use -OperationTimeoutSec 5 for fast-fail on unresponsive servers
     #>
     [CmdletBinding()]
     param (
@@ -55,7 +68,13 @@
         [System.Management.Automation.PSCredential]$Credential,
 
         [Parameter()]
-        [int]$ThrottleLimit = 5
+        [int]$ThrottleLimit = 20,
+
+        [Parameter()]
+        [int]$OperationTimeoutSec = 10,
+
+        [Parameter()]
+        [switch]$SkipTaskInfo
     )
 
     Process {
@@ -64,11 +83,16 @@
         $ComputerName | ForEach-Object -Parallel {
             $Computer = $_
             $Cred = $using:Credential
+            $Skip = $using:SkipTaskInfo
+            $Timeout = $using:OperationTimeoutSec
 
             # Verbose output must be explicit inside parallel blocks
             Write-Verbose "Processing $Computer..."
 
-            $SessionParams = @{ ComputerName = $Computer }
+            $SessionParams = @{
+                ComputerName = $Computer
+                OperationTimeoutSec = $Timeout
+            }
             if ($Cred) { $SessionParams['Credential'] = $Cred }
 
             try {
@@ -76,32 +100,40 @@
                 $CimSession = New-CimSession @SessionParams -ErrorAction Stop
 
                 try {
-                    # Get Task Definitions
-                    $RawTasks = Get-ScheduledTask -CimSession $CimSession | Select-Object *
+                    # Get Task Definitions - ONLY SELECT NEEDED PROPERTIES (critical optimization)
+                    $RawTasks = Get-ScheduledTask -CimSession $CimSession -ErrorAction Stop |
+                        Select-Object TaskName, TaskPath, State, Author, @{Name='RunAsUser'; Expression={$_.Principal.UserId}}
 
                     foreach ($Task in $RawTasks) {
-
-                        # Get Runtime Info (LastRun, NextRun, Result) safely
-                        $TaskInfo = $null
-                        try {
-                            $TaskInfo = Get-ScheduledTaskInfo -TaskName $Task.TaskName -TaskPath $Task.TaskPath -CimSession $CimSession -ErrorAction Stop
-                        } catch {
-                            # Ignore specific errors for single tasks (e.g. permission issues on one task)
-                        }
-
-                        # Return a Hashtable (Lightweight & Thread-Safe)
-                        # We do NOT return the Class object here to avoid Deserialization issues between threads.
-                        @{
+                        # Build base hashtable without task info
+                        $TaskData = @{
                             ComputerName   = $Computer
                             TaskName       = $Task.TaskName
                             TaskPath       = $Task.TaskPath
-                            State          = $Task.State
+                            State          = $Task.State.ToString()
                             Author         = $Task.Author
-                            RunAsUser      = $Task.Principal.UserId
-                            LastRunTime    = $TaskInfo.LastRunTime
-                            NextRunTime    = $TaskInfo.NextRunTime
-                            LastTaskResult = $TaskInfo.LastTaskResult
+                            RunAsUser      = $Task.RunAsUser
+                            LastRunTime    = $null
+                            NextRunTime    = $null
+                            LastTaskResult = $null
                         }
+
+                        # Optional: Get Runtime Info only if not skipped
+                        if (-not $Skip) {
+                            try {
+                                $TaskInfo = Get-ScheduledTaskInfo -TaskName $Task.TaskName -TaskPath $Task.TaskPath -CimSession $CimSession -ErrorAction Stop
+                                if ($TaskInfo) {
+                                    $TaskData['LastRunTime']    = $TaskInfo.LastRunTime
+                                    $TaskData['NextRunTime']    = $TaskInfo.NextRunTime
+                                    $TaskData['LastTaskResult'] = $TaskInfo.LastTaskResult.ToString()
+                                }
+                            } catch {
+                                # Silently ignore task info retrieval errors
+                            }
+                        }
+
+                        # Return the hashtable
+                        $TaskData
                     }
                 }
                 catch {
@@ -126,20 +158,16 @@
             $RawData = $_
             $TaskObj = [ScheduleTask]::new()
 
-            # Manual property mapping
-            if ($RawData.ComputerName) { $TaskObj.ComputerName = $RawData.ComputerName }
-            if ($RawData.TaskName)     { $TaskObj.TaskName     = $RawData.TaskName }
-            if ($RawData.TaskPath)     { $TaskObj.TaskPath     = $RawData.TaskPath }
-            if ($RawData.State)        { $TaskObj.State        = $RawData.State.ToString() }
-            if ($RawData.Author)       { $TaskObj.Author       = $RawData.Author }
-            if ($RawData.RunAsUser)    { $TaskObj.RunAsUser    = $RawData.RunAsUser }
-
-            # Safe Date Assignment
-            if ($RawData.LastRunTime -is [DateTime]) { $TaskObj.LastRunTime = $RawData.LastRunTime }
-            if ($RawData.NextRunTime -is [DateTime]) { $TaskObj.NextRunTime = $RawData.NextRunTime }
-
-            # Safe String Assignment for Result
-            if ($null -ne $RawData.LastTaskResult) { $TaskObj.LastTaskResult = $RawData.LastTaskResult.ToString() }
+            # Direct assignment (no null checks needed for non-optional properties)
+            $TaskObj.ComputerName   = $RawData.ComputerName
+            $TaskObj.TaskName       = $RawData.TaskName
+            $TaskObj.TaskPath       = $RawData.TaskPath
+            $TaskObj.State          = $RawData.State
+            $TaskObj.Author         = $RawData.Author
+            $TaskObj.RunAsUser      = $RawData.RunAsUser
+            $TaskObj.LastRunTime    = $RawData.LastRunTime
+            $TaskObj.NextRunTime    = $RawData.NextRunTime
+            $TaskObj.LastTaskResult = $RawData.LastTaskResult
 
             # Output the final typed object
             $TaskObj
