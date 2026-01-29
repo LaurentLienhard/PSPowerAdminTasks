@@ -71,30 +71,27 @@
     begin
     {
         $WSUSGroupName = $PSBoundParameters['WSUSGroupName']
-        if ($log)
-        {
-            $LogPath = "C:\rundeck\$($WSUSGroupName).log"
-        }
-
+        $LogPath = if ($log) { "C:\rundeck\$WSUSGroupName.log" } else { $null }
     }
 
     process
     {
-        $ServersToReboot = Get-ADGroupMember -Identity $WSUSGroupName | Select-Object -ExpandProperty name | foreach {
-            Get-ADComputer -Identity $_ -Properties Name, OperatingSystem
-        }
-        $ServersToReboot = $ServersToReboot | Where-Object {$_.OperatingSystem -match "2008|2012|2003"} | Select-Object -ExpandProperty Name
-        foreach ($server in $ServersToReboot) {
-            if ($log)
-                {
-                    Write-Log -LogPath $LogPath -Message "Rebooting $($server)" -Severity Information
-                }
+        # Retrieve members and filter for servers with matching OS versions
+        $ServersToReboot = Get-ADGroupMember -Identity $WSUSGroupName |
+            ForEach-Object {
+                Get-ADComputer -Identity $_.Name -Properties OperatingSystem
+            } |
+            Where-Object { $_.OperatingSystem -match '2003|2008|2012' } |
+            Select-Object -ExpandProperty Name
+
+        # Reboot each server with optional logging
+        foreach ($server in $ServersToReboot)
+        {
+            if ($LogPath)
+            {
+                Write-Log -LogPath $LogPath -Message "Rebooting $server" -Severity Information
+            }
             Restart-Computer -ComputerName $server -Confirm:$false -Force
         }
-
-
-    }
-    end
-    {
     }
 }
