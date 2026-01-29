@@ -289,3 +289,18 @@ function Send-MailForAreboot
         return $result
     }
 }
+
+
+
+PS C:\Users\llienhard\Documents\01-DEV\Github\PSPowerAdminTasks> Get-adComputer -Filter 'OperatingSystem -like "*Server*" -and Enabled -eq $true' -Properties Name | Select-Object -ExpandProperty Name | Send-MailForAreboot -Recipient llienhard@cw.fmlogistic.com -Credential (Get-Secret AdmAccount) -Verbose -MaxParallel 20
+Write-Error: Error checking reboot status for SGECITWI1 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for VMSDC04 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for ICADC03 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for DSDDC4 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for TDDDC02 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for PHGDC04 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for DUDDC02 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for LPODC03 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for CAW1PDC02 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for CAW1PDC01 : Unable to find type [COMPUTER].
+Write-Error: Error checking reboot status for VMSDC03 : Unable to find type [COMPUTER].
