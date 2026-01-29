@@ -1,15 +1,35 @@
-﻿<#
-.SYNOPSIS
-    Short description
-.DESCRIPTION
-    Long description
-.EXAMPLE
-    Example of how to use this cmdlet
-.EXAMPLE
-    Another example of how to use this cmdlet
-#>
-function Start-RebootServerBygroup
+﻿function Start-RebootServerBygroup
 {
+    <#
+    .SYNOPSIS
+        Reboots servers in a WSUS group matching specific operating system versions.
+
+    .DESCRIPTION
+        This function retrieves all servers from a specified WSUS Active Directory group,
+        filters them for Windows Server 2003, 2008, or 2012, and remotely reboots them.
+        Optionally logs the reboot activity to a file.
+
+    .PARAMETER WSUSGroupName
+        The name of the WSUS Active Directory group containing servers to reboot.
+        This parameter is dynamic and populated from AD groups matching the pattern "WSUS*".
+        Mandatory parameter.
+
+    .PARAMETER Log
+        Switch parameter. When specified, logs reboot activities to a file at
+        C:\rundeck\<WSUSGroupName>.log.
+
+    .EXAMPLE
+        Start-RebootServerBygroup -WSUSGroupName "WSUS-WebServers"
+
+        Reboots all eligible servers in the WSUS-WebServers AD group without logging.
+
+    .EXAMPLE
+        Start-RebootServerBygroup -WSUSGroupName "WSUS-DatabaseServers" -Log
+
+        Reboots all eligible servers in the WSUS-DatabaseServers AD group and logs
+        the activity to C:\rundeck\WSUS-DatabaseServers.log.
+    #>
+
     [CmdletBinding()]
     param (
         [Parameter()]
