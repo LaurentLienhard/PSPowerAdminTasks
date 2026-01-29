@@ -18,6 +18,13 @@
         Switch parameter. When specified, logs reboot activities to a file at
         C:\rundeck\<WSUSGroupName>.log.
 
+    .PARAMETER WhatIf
+        Shows what would happen if the command runs without actually rebooting the servers.
+        Use this to preview which servers would be rebooted before executing the actual command.
+
+    .PARAMETER Confirm
+        Prompts for confirmation before rebooting each server.
+
     .EXAMPLE
         Start-RebootServerBygroup -WSUSGroupName "WSUS-WebServers"
 
@@ -28,9 +35,14 @@
 
         Reboots all eligible servers in the WSUS-DatabaseServers AD group and logs
         the activity to C:\rundeck\WSUS-DatabaseServers.log.
+
+    .EXAMPLE
+        Start-RebootServerBygroup -WSUSGroupName "WSUS-WebServers" -WhatIf
+
+        Shows which servers would be rebooted without actually performing the reboot.
     #>
 
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param (
         [Parameter()]
         [switch]$log
@@ -87,11 +99,14 @@
         # Reboot each server with optional logging
         foreach ($server in $ServersToReboot)
         {
-            if ($LogPath)
+            if ($PSCmdlet.ShouldProcess($server, "Restart computer"))
             {
-                Write-Log -LogPath $LogPath -Message "Rebooting $server" -Severity Information
+                if ($LogPath)
+                {
+                    Write-Log -LogPath $LogPath -Message "Rebooting $server" -Severity Information
+                }
+                Restart-Computer -ComputerName $server -Confirm:$false -Force
             }
-            Restart-Computer -ComputerName $server -Confirm:$false -Force
         }
     }
 }
