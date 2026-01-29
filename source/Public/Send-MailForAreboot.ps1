@@ -27,6 +27,10 @@ function Send-MailForAreboot {
         PSCredential object for remote connection to servers. If not provided, uses current
         session credentials.
 
+    .PARAMETER MaxParallel
+        Maximum number of servers to process in parallel. Default is 5. Higher values increase
+        parallelization but consume more resources. Requires PowerShell 7.0 or later.
+
     .EXAMPLE
         Send-MailForAreboot -ComputerName 'SERVER01', 'SERVER02' -Recipient 'admin@domain.com'
 
@@ -42,6 +46,11 @@ function Send-MailForAreboot {
             -SMTPServer 'smtp.custom.com' -Port 587 -From 'alerts@custom.com'
 
         Uses custom SMTP configuration.
+
+    .EXAMPLE
+        Send-MailForAreboot -ComputerName (Get-Content .\servers.txt) -Recipient 'admin@domain.com' -MaxParallel 10
+
+        Processes 10 servers in parallel for faster execution.
 
     .NOTES
         The function uses the COMPUTER class to detect pending reboots and Send-MailKitMessage
@@ -73,7 +82,12 @@ function Send-MailForAreboot {
         [ValidateNotNull()]
         [System.Management.Automation.PSCredential]
         [System.Management.Automation.Credential()]
-        $Credential = [System.Management.Automation.PSCredential]::Empty
+        $Credential = [System.Management.Automation.PSCredential]::Empty,
+
+        [Parameter()]
+        [ValidateRange(1, 50)]
+        [System.Int32]
+        $MaxParallel = 5
     )
 
     begin {
@@ -82,7 +96,10 @@ function Send-MailForAreboot {
     }
 
     process {
-        foreach ($computer in $ComputerName) {
+        $ComputerName | ForEach-Object -Parallel {
+            $computer = $_
+            $Credential = $using:Credential
+
             try {
                 Write-Verbose "Checking reboot status for $computer..."
 
@@ -105,7 +122,7 @@ function Send-MailForAreboot {
                     if ($computerObject.RebootNeeded -eq 'YES') {
                         Write-Verbose "Computer $computer requires a reboot."
 
-                        $rebootInfo = [PSCustomObject]@{
+                        [PSCustomObject]@{
                             ComputerName         = $computerObject.Name
                             OperatingSystem      = $computerObject.Operatingsystem
                             LastBootUptime       = $computerObject.LastBootUptime
@@ -113,42 +130,48 @@ function Send-MailForAreboot {
                             LastHotfixDate       = $computerObject.HotFixInstalledOn
                             RebootNeeded         = $computerObject.RebootNeeded
                             Status               = 'SUCCESS'
+                            NeedsReboot          = $true
                         }
-
-                        $serversNeedingReboot += $rebootInfo
-                        $result += $rebootInfo
                     }
                     else {
                         Write-Verbose "Computer $computer does not require a reboot."
 
-                        $result += [PSCustomObject]@{
+                        [PSCustomObject]@{
                             ComputerName    = $computerObject.Name
                             OperatingSystem = $computerObject.Operatingsystem
                             RebootNeeded    = $computerObject.RebootNeeded
                             Status          = 'SUCCESS'
+                            NeedsReboot     = $false
                         }
                     }
                 }
                 else {
                     Write-Warning "Computer $computer is not reachable (Status: $($computerObject.Status))"
 
-                    $result += [PSCustomObject]@{
+                    [PSCustomObject]@{
                         ComputerName = $computer
                         RebootNeeded = 'Unknown'
                         Status       = 'FAILED'
                         Message      = $computerObject.Status
+                        NeedsReboot  = $false
                     }
                 }
             }
             catch {
                 Write-Error "Error checking reboot status for $computer : $_"
 
-                $result += [PSCustomObject]@{
+                [PSCustomObject]@{
                     ComputerName = $computer
                     RebootNeeded = 'Unknown'
                     Status       = 'FAILED'
                     Message      = $_.Exception.Message
+                    NeedsReboot  = $false
                 }
+            }
+        } -ThrottleLimit $MaxParallel | ForEach-Object {
+            $result += $_
+            if ($_.NeedsReboot) {
+                $serversNeedingReboot += $_
             }
         }
     }
