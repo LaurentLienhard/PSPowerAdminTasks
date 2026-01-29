@@ -1,5 +1,4 @@
-function Send-MailForAreboot
-{
+function Send-MailForAreboot {
     <#
     .SYNOPSIS
         Send an email notification for servers requiring a reboot.
@@ -28,10 +27,6 @@ function Send-MailForAreboot
         PSCredential object for remote connection to servers. If not provided, uses current
         session credentials.
 
-    .PARAMETER MaxParallel
-        Maximum number of servers to process in parallel. Default is 5. Higher values increase
-        parallelization but consume more resources. Requires PowerShell 7.0 or later.
-
     .EXAMPLE
         Send-MailForAreboot -ComputerName 'SERVER01', 'SERVER02' -Recipient 'admin@domain.com'
 
@@ -47,11 +42,6 @@ function Send-MailForAreboot
             -SMTPServer 'smtp.custom.com' -Port 587 -From 'alerts@custom.com'
 
         Uses custom SMTP configuration.
-
-    .EXAMPLE
-        Send-MailForAreboot -ComputerName (Get-Content .\servers.txt) -Recipient 'admin@domain.com' -MaxParallel 10
-
-        Processes 10 servers in parallel for faster execution.
 
     .NOTES
         The function uses the COMPUTER class to detect pending reboots and Send-MailKitMessage
@@ -83,142 +73,95 @@ function Send-MailForAreboot
         [ValidateNotNull()]
         [System.Management.Automation.PSCredential]
         [System.Management.Automation.Credential()]
-        $Credential = [System.Management.Automation.PSCredential]::Empty,
-
-        [Parameter()]
-        [ValidateRange(1, 50)]
-        [System.Int32]
-        $MaxParallel = 5
+        $Credential = [System.Management.Automation.PSCredential]::Empty
     )
 
-    begin
-    {
+    begin {
         $result = @()
         $serversNeedingReboot = @()
-
-        # Get the module path for parallel runspaces - check loaded modules first
-        $moduleInfo = Get-Module PSPowerAdminTasks -ErrorAction SilentlyContinue
-        if (-not $moduleInfo) {
-            $moduleInfo = Get-Module PSPowerAdminTasks -ListAvailable | Select-Object -First 1
-        }
-
-        if (-not $moduleInfo) {
-            throw "PSPowerAdminTasks module not found. Please ensure the module is installed or loaded."
-        }
-
-        $PSPowerAdminTasksPath = $moduleInfo.ModuleBase
     }
 
-    process
-    {
-        $ComputerName | ForEach-Object -Parallel {
-            $computer = $_
-            $Credential = $using:Credential
-            $PSPowerAdminTasksPath = $using:PSPowerAdminTasksPath
-
-            try
-            {
-                # Import module in parallel runspace to access COMPUTER class
-                $psd1Path = Join-Path $PSPowerAdminTasksPath "PSPowerAdminTasks.psd1"
-                Import-Module $psd1Path -Force -ErrorAction Stop
-
+    process {
+        foreach ($computer in $ComputerName) {
+            try {
                 Write-Verbose "Checking reboot status for $computer..."
 
                 # Create COMPUTER object
-                if ($Credential -ne [System.Management.Automation.PSCredential]::Empty)
-                {
+                if ($Credential -ne [System.Management.Automation.PSCredential]::Empty) {
                     $computerObject = [COMPUTER]::new($computer, $Credential)
                 }
-                else
-                {
+                else {
                     $computerObject = [COMPUTER]::new($computer)
                 }
 
                 # Test if computer is online
-                if ($computerObject.Status -eq 'Ping OK')
-                {
+                if ($computerObject.Status -eq 'Ping OK') {
                     Write-Verbose "Computer $computer is online. Checking for pending reboot..."
 
                     # Get computer information including reboot status
                     $computerObject.GetAllInformation()
 
                     # Check if reboot is needed
-                    if ($computerObject.RebootNeeded -eq 'YES')
-                    {
+                    if ($computerObject.RebootNeeded -eq 'YES') {
                         Write-Verbose "Computer $computer requires a reboot."
 
-                        [PSCustomObject]@{
-                            ComputerName    = $computerObject.Name
-                            OperatingSystem = $computerObject.Operatingsystem
-                            LastBootUptime  = $computerObject.LastBootUptime
-                            LastHotfixID    = $computerObject.HotfixID
-                            LastHotfixDate  = $computerObject.HotFixInstalledOn
-                            RebootNeeded    = $computerObject.RebootNeeded
-                            Status          = 'SUCCESS'
-                            NeedsReboot     = $true
+                        $rebootInfo = [PSCustomObject]@{
+                            ComputerName         = $computerObject.Name
+                            OperatingSystem      = $computerObject.Operatingsystem
+                            LastBootUptime       = $computerObject.LastBootUptime
+                            LastHotfixID         = $computerObject.HotfixID
+                            LastHotfixDate       = $computerObject.HotFixInstalledOn
+                            RebootNeeded         = $computerObject.RebootNeeded
+                            Status               = 'SUCCESS'
                         }
+
+                        $serversNeedingReboot += $rebootInfo
+                        $result += $rebootInfo
                     }
-                    else
-                    {
+                    else {
                         Write-Verbose "Computer $computer does not require a reboot."
 
-                        [PSCustomObject]@{
+                        $result += [PSCustomObject]@{
                             ComputerName    = $computerObject.Name
                             OperatingSystem = $computerObject.Operatingsystem
                             RebootNeeded    = $computerObject.RebootNeeded
                             Status          = 'SUCCESS'
-                            NeedsReboot     = $false
                         }
                     }
                 }
-                else
-                {
+                else {
                     Write-Warning "Computer $computer is not reachable (Status: $($computerObject.Status))"
 
-                    [PSCustomObject]@{
+                    $result += [PSCustomObject]@{
                         ComputerName = $computer
                         RebootNeeded = 'Unknown'
                         Status       = 'FAILED'
                         Message      = $computerObject.Status
-                        NeedsReboot  = $false
                     }
                 }
             }
-            catch
-            {
+            catch {
                 Write-Error "Error checking reboot status for $computer : $_"
 
-                [PSCustomObject]@{
+                $result += [PSCustomObject]@{
                     ComputerName = $computer
                     RebootNeeded = 'Unknown'
                     Status       = 'FAILED'
                     Message      = $_.Exception.Message
-                    NeedsReboot  = $false
                 }
-            }
-        } -ThrottleLimit $MaxParallel | ForEach-Object {
-            $result += $_
-            if ($_.NeedsReboot)
-            {
-                $serversNeedingReboot += $_
             }
         }
     }
 
-    end
-    {
-        if ($serversNeedingReboot.Count -gt 0)
-        {
+    end {
+        if ($serversNeedingReboot.Count -gt 0) {
             Write-Verbose "Found $($serversNeedingReboot.Count) server(s) requiring reboot. Preparing to send email..."
 
-            if ($PSCmdlet.ShouldProcess("Send reboot notification email to $($Recipient -join ', ')"))
-            {
-                try
-                {
+            if ($PSCmdlet.ShouldProcess("Send reboot notification email to $($Recipient -join ', ')")) {
+                try {
                     # Configure email recipients
                     $SMTPRecipientList = [MimeKit.InternetAddressList]::new()
-                    foreach ($emailAddress in $Recipient)
-                    {
+                    foreach ($emailAddress in $Recipient) {
                         $SMTPRecipientList.Add([MimeKit.InternetAddress]$emailAddress)
                     }
 
@@ -257,8 +200,7 @@ function Send-MailForAreboot
         </tr>
 "@
 
-                    foreach ($server in $serversNeedingReboot)
-                    {
+                    foreach ($server in $serversNeedingReboot) {
                         $htmlBody += @"
         <tr>
             <td class="warning">$($server.ComputerName)</td>
@@ -292,14 +234,12 @@ function Send-MailForAreboot
 
                     Write-Verbose "Email notification sent successfully to $($Recipient -join ', ')"
                 }
-                catch
-                {
+                catch {
                     Write-Error "Error sending email notification: $_"
                 }
             }
         }
-        else
-        {
+        else {
             Write-Verbose "No servers require reboot. Email notification skipped."
         }
 
