@@ -95,6 +95,18 @@ function Send-MailForAreboot
     {
         $result = @()
         $serversNeedingReboot = @()
+
+        # Get the module path for parallel runspaces - check loaded modules first
+        $moduleInfo = Get-Module PSPowerAdminTasks -ErrorAction SilentlyContinue
+        if (-not $moduleInfo) {
+            $moduleInfo = Get-Module PSPowerAdminTasks -ListAvailable | Select-Object -First 1
+        }
+
+        if (-not $moduleInfo) {
+            throw "PSPowerAdminTasks module not found. Please ensure the module is installed or loaded."
+        }
+
+        $PSPowerAdminTasksPath = $moduleInfo.ModuleBase
     }
 
     process
@@ -102,11 +114,13 @@ function Send-MailForAreboot
         $ComputerName | ForEach-Object -Parallel {
             $computer = $_
             $Credential = $using:Credential
+            $PSPowerAdminTasksPath = $using:PSPowerAdminTasksPath
 
             try
             {
                 # Import module in parallel runspace to access COMPUTER class
-                Import-Module PSPowerAdminTasks -Force -ErrorAction Stop
+                $psd1Path = Join-Path $PSPowerAdminTasksPath "PSPowerAdminTasks.psd1"
+                Import-Module $psd1Path -Force -ErrorAction Stop
 
                 Write-Verbose "Checking reboot status for $computer..."
 
