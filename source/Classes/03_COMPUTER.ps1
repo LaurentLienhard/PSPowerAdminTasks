@@ -212,7 +212,7 @@ class COMPUTER
         }
     }
 
-[void] GetDnsConfig ()
+    [void] GetDnsConfig ()
     {
         if ($this.Status -eq "Ping OK")
         {
@@ -220,7 +220,10 @@ class COMPUTER
                 ComputerName = $this.Name
                 ErrorAction  = "Stop"
             }
-            if ($null -ne $this.Credential) { $CmdParameter['Credential'] = $this.Credential }
+            if ($null -ne $this.Credential)
+            {
+                $CmdParameter['Credential'] = $this.Credential
+            }
 
             try
             {
@@ -228,48 +231,71 @@ class COMPUTER
                 $remoteData = Invoke-Command @CmdParameter -ScriptBlock {
                     $resultData = @{ IP = $null; DNS = @() }
 
-                    if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue) {
+                    if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue)
+                    {
                         # MODERN (Windows 2012+)
                         # On cherche l'interface "Up" qui a une passerelle (souvent la principale)
                         $iface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
-                        if ($iface) {
+                        if ($iface)
+                        {
                             $dns = Get-DnsClientServerAddress -InterfaceIndex $iface.ifIndex -AddressFamily IPv4
-                            $ip  = Get-NetIPAddress -InterfaceIndex $iface.ifIndex -AddressFamily IPv4 | Select-Object -First 1
+                            $ip = Get-NetIPAddress -InterfaceIndex $iface.ifIndex -AddressFamily IPv4 | Select-Object -First 1
 
                             $resultData.DNS = $dns.ServerAddresses
-                            $resultData.IP  = $ip.IPAddress
+                            $resultData.IP = $ip.IPAddress
                         }
                     }
-                    else {
+                    else
+                    {
                         # LEGACY (WMI)
                         $adapter = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled = 'TRUE'" | Select-Object -First 1
-                        if ($adapter) {
+                        if ($adapter)
+                        {
                             $resultData.DNS = $adapter.DNSServerSearchOrder
-                            $resultData.IP  = $adapter.IPAddress[0] # IPAddress est un tableau en WMI
+                            $resultData.IP = $adapter.IPAddress[0] # IPAddress est un tableau en WMI
                         }
                     }
                     return $resultData
                 }
 
                 # Traitement du résultat DNS
-                if ($remoteData.DNS) {
+                if ($remoteData.DNS)
+                {
                     $this.DnsServers = ($remoteData.DNS | Select-Object -Unique) -join ', '
-                } else {
+                }
+                else
+                {
                     $this.DnsServers = "None"
                 }
 
                 # Traitement du résultat IP (C'est ici qu'on a la vraie IP LAN)
-                if ($remoteData.IP) {
+                if ($remoteData.IP)
+                {
                     $this.IPv4Address = $remoteData.IP
-                } else {
+                }
+                else
+                {
                     $this.IPv4Address = "Unknown IP"
                 }
             }
-            catch {
+            catch
+            {
                 $this.DnsServers = "Error Retrieving Info"
                 $this.IPv4Address = "Connection Error"
             }
         }
+    }
+
+    [int] GetPendingUpdatesCount()
+    {
+        $script = {
+            $updateSearcher = (New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher()
+            $searchResult = $updateSearcher.Search("IsInstalled=0 and Type='Software' and IsHidden=0")
+            return $searchResult.Updates.Count
+        }
+
+        # Exécution locale ou distante selon le contexte de votre classe
+        return Invoke-Command -ComputerName $this.Name -ScriptBlock $script -ErrorAction SilentlyContinue
     }
 
     [void] SetDnsServers ([string[]]$NewDnsList)
@@ -279,30 +305,39 @@ class COMPUTER
             $CmdParameter = @{
                 ComputerName = $this.Name
                 ErrorAction  = "Stop"
-                ArgumentList = (,$NewDnsList)
+                ArgumentList = (, $NewDnsList)
             }
-            if ($null -ne $this.Credential) { $CmdParameter['Credential'] = $this.Credential }
+            if ($null -ne $this.Credential)
+            {
+                $CmdParameter['Credential'] = $this.Credential
+            }
 
-            try {
+            try
+            {
                 Invoke-Command @CmdParameter -ScriptBlock {
                     param([string[]]$DnsToSet)
 
-                    if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue) {
+                    if (Get-Command -Name 'Get-NetAdapter' -ErrorAction SilentlyContinue)
+                    {
                         $interfaces = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
-                        foreach ($iface in $interfaces) {
+                        foreach ($iface in $interfaces)
+                        {
                             Set-DnsClientServerAddress -InterfaceIndex $iface.ifIndex -ServerAddresses $DnsToSet -ErrorAction SilentlyContinue
                         }
                     }
-                    else {
+                    else
+                    {
                         $adapters = Get-WmiObject -Class Win32_NetworkAdapterConfiguration -Filter "IPEnabled = 'TRUE'"
-                        foreach ($adapter in $adapters) {
+                        foreach ($adapter in $adapters)
+                        {
                             $adapter.SetDNSServerSearchOrder($DnsToSet) | Out-Null
                         }
                     }
                 }
                 $this.GetDnsConfig()
             }
-            catch {
+            catch
+            {
                 Write-Warning ('Error Setting DNS on {0}: {1}' -f $this.Name, $_.Exception.Message)
             }
         }
@@ -312,10 +347,12 @@ class COMPUTER
     {
         $this.GetDnsConfig()
         $currentList = @()
-        if ($this.DnsServers -and $this.DnsServers -ne "None" -and $this.DnsServers -ne "Error Retrieving DNS") {
+        if ($this.DnsServers -and $this.DnsServers -ne "None" -and $this.DnsServers -ne "Error Retrieving DNS")
+        {
             $currentList = $this.DnsServers -split ', '
         }
-        if ($currentList -notcontains $NewDnsIP) {
+        if ($currentList -notcontains $NewDnsIP)
+        {
             $currentList += $NewDnsIP
             $this.SetDnsServers($currentList)
         }
@@ -325,10 +362,12 @@ class COMPUTER
     {
         $this.GetDnsConfig()
         $currentList = @()
-        if ($this.DnsServers -and $this.DnsServers -ne "None") {
+        if ($this.DnsServers -and $this.DnsServers -ne "None")
+        {
             $currentList = $this.DnsServers -split ', '
         }
-        if ($currentList -contains $DnsIpToRemove) {
+        if ($currentList -contains $DnsIpToRemove)
+        {
             $newList = $currentList | Where-Object { $_ -ne $DnsIpToRemove }
             $this.SetDnsServers($newList)
         }
@@ -338,11 +377,20 @@ class COMPUTER
     {
         $this.GetDnsConfig()
         $currentList = @()
-        if ($this.DnsServers -and $this.DnsServers -ne "None") {
+        if ($this.DnsServers -and $this.DnsServers -ne "None")
+        {
             $currentList = $this.DnsServers -split ', '
         }
-        if ($currentList -contains $OldIp) {
-            $newList = $currentList | ForEach-Object { if ($_ -eq $OldIp) { $NewIp } else { $_ } }
+        if ($currentList -contains $OldIp)
+        {
+            $newList = $currentList | ForEach-Object { if ($_ -eq $OldIp)
+                {
+                    $NewIp
+                }
+                else
+                {
+                    $_
+                } }
             $this.SetDnsServers($newList)
         }
     }

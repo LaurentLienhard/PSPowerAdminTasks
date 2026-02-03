@@ -2,47 +2,37 @@ function Send-MailForAreboot
 {
     <#
     .SYNOPSIS
-        Send an email notification for servers requiring a reboot.
+        Send an email notification for servers requiring a reboot or having pending updates.
 
-    .PARAMETER French
-        If specified, the email content (subject and body) will be in French.
+    .DESCRIPTION
+        This function checks remote servers for pending reboots and available software updates.
+        It sends a localized HTML email if action is required.
     #>
 
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [System.String[]]
-        $ComputerName,
+        [System.String[]]$ComputerName,
 
         [Parameter(Mandatory = $true)]
-        [System.String[]]
-        $Recipient,
+        [System.String[]]$Recipient,
 
-        [Parameter()]
-        [System.String]
-        $SMTPServer = 'smtp.fmlogistic.fr',
-
-        [Parameter()]
-        [System.Int32]
-        $Port = 25,
-
-        [Parameter()]
-        [System.String]
-        $From = 'dsdpwinadm@fmlogistic.fr',
+        [Parameter()]$SMTPServer = 'smtp.fmlogistic.fr',
+        [Parameter()]$Port = 25,
+        [Parameter()]$From = 'dsdpwinadm@fmlogistic.fr',
 
         [ValidateNotNull()]
         [System.Management.Automation.PSCredential]
         [System.Management.Automation.Credential()]
         $Credential = [System.Management.Automation.PSCredential]::Empty,
 
-        [Parameter()]
-        [switch]$French
+        [Parameter()][switch]$French
     )
 
     begin
     {
         $result = @()
-        $serversNeedingReboot = @()
+        $serversNeedingAttention = @()
     }
 
     process
@@ -51,143 +41,144 @@ function Send-MailForAreboot
         {
             try
             {
-                Write-Verbose "Checking reboot status for $computer..."
-
-                if ($Credential -ne [System.Management.Automation.PSCredential]::Empty)
+                Write-Verbose "Processing $computer..."
+                $computerObject = if ($Credential -ne [System.Management.Automation.PSCredential]::Empty)
                 {
-                    $computerObject = [COMPUTER]::new($computer, $Credential)
+                    [COMPUTER]::new($computer, $Credential)
                 }
                 else
                 {
-                    $computerObject = [COMPUTER]::new($computer)
+                    [COMPUTER]::new($computer)
                 }
 
                 if ($computerObject.Status -eq 'Ping OK')
                 {
                     $computerObject.GetAllInformation()
 
-                    if ($computerObject.RebootNeeded -eq 'YES')
+                    $updateCount = 0
+                    try
                     {
-                        $rebootInfo = [PSCustomObject]@{
-                            ComputerName    = $computerObject.Name
-                            OperatingSystem = $computerObject.Operatingsystem
-                            LastBootUptime  = $computerObject.LastBootUptime
-                            LastHotfixID    = $computerObject.HotfixID
-                            LastHotfixDate  = $computerObject.HotFixInstalledOn
-                            RebootNeeded    = $computerObject.RebootNeeded
-                            Status          = 'SUCCESS'
-                        }
-                        $serversNeedingReboot += $rebootInfo
-                        $result += $rebootInfo
+                        $updateCount = Invoke-Command -ComputerName $computer -Credential $Credential -ScriptBlock {
+                            $searcher = (New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher()
+                            return $searcher.Search("IsInstalled=0 and Type='Software' and IsHidden=0").Updates.Count
+                        } -ErrorAction Stop
                     }
-                    else
+                    catch
                     {
-                        $result += [PSCustomObject]@{
-                            ComputerName    = $computerObject.Name
-                            OperatingSystem = $computerObject.Operatingsystem
-                            RebootNeeded    = $computerObject.RebootNeeded
-                            Status          = 'SUCCESS'
-                        }
+                        $updateCount = "Error"
                     }
+
+                    $serverData = [PSCustomObject]@{
+                        ComputerName   = $computerObject.Name
+                        PendingUpdates = $updateCount
+                        RebootNeeded   = $computerObject.RebootNeeded
+                        Status         = 'SUCCESS'
+                    }
+
+                    if (($computerObject.RebootNeeded -eq 'YES') -or ($updateCount -is [int] -and $updateCount -gt 0))
+                    {
+                        $serversNeedingAttention += $serverData
+                    }
+                    $result += $serverData
                 }
                 else
                 {
-                    Write-Warning "Computer $computer is not reachable"
-                    $result += [PSCustomObject]@{
-                        ComputerName = $computer
-                        RebootNeeded = 'Unknown'
-                        Status       = 'FAILED'
-                        Message      = $computerObject.Status
-                    }
+                    $result += [PSCustomObject]@{ ComputerName = $computer; Status = 'FAILED'; Message = $computerObject.Status }
                 }
             }
             catch
             {
-                Write-Error "Error for $computer : $_"
-                $result += [PSCustomObject]@{
-                    ComputerName = $computer
-                    RebootNeeded = 'Unknown'
-                    Status       = 'FAILED'
-                    Message      = $_.Exception.Message
-                }
+                $result += [PSCustomObject]@{ ComputerName = $computer; Status = 'FAILED'; Message = $_.Exception.Message }
             }
         }
     }
 
     end
     {
-        if ($serversNeedingReboot.Count -gt 0)
+        if ($serversNeedingAttention.Count -gt 0)
         {
+            # Localization avec entites HTML pour eviter les erreurs d'encodage
             if ($French)
             {
-                $Subject = "Action Requise : $($serversNeedingReboot.Count) serveur(s) en attente de redémarrage"
-                $Header = "Alerte de Notification de Redémarrage"
-                $Intro = "Le(s) $($serversNeedingReboot.Count) serveur(s) suivant(s) nécessite(nt) une attention immédiate (redémarrage en attente) :"
-                $ThHost = "Nom du Serveur"
-                $ThOS = "Système d'Exploitation"
-                $ThBoot = "Dernier Boot"
-                $ThFix = "ID Dernier Hotfix"
-                $ThDate = "Date du Hotfix"
-                $Action = "Merci de planifier le redémarrage de ces serveurs dès que possible."
-                $Footer = "Ceci est un message automatique."
+                $Subject = "Action Requise : Maintenance sur $($serversNeedingAttention.Count) serveur(s)"
+                $Title = "Rapport de Maintenance Serveurs"
+                $Intro = "Les serveurs suivants pr&eacute;sentent des mises &agrave; jour en attente ou n&eacute;cessitent un red&eacute;marrage :"
+                $ThHost = "Serveur"
+                $ThUpd = "Updates"
+                $ThReb = "Reboot Requis"
+                $Action = "Action : Merci de planifier une intervention pour ces machines."
             }
             else
             {
-                $Subject = "Action Required: $($serversNeedingReboot.Count) server(s) require reboot"
-                $Header = "Reboot Notification Alert"
-                $Intro = "The following $($serversNeedingReboot.Count) server(s) require immediate attention and have a pending reboot:"
-                $ThHost = "Computer Name"
-                $ThOS = "Operating System"
-                $ThBoot = "Last Boot Time"
-                $ThFix = "Last Hotfix ID"
-                $ThDate = "Last Hotfix Date"
-                $Action = "Please plan to reboot these servers at the earliest convenient time."
-                $Footer = "This is an automated message."
+                $Subject = "Action Required: Maintenance on $($serversNeedingAttention.Count) server(s)"
+                $Title = "Server Maintenance Report"
+                $Intro = "The following servers have pending updates or require a reboot:"
+                $ThHost = "Computer"
+                $ThUpd = "Updates"
+                $ThReb = "Reboot Needed"
+                $Action = "Action: Please plan a maintenance window for these machines."
             }
 
             if ($PSCmdlet.ShouldProcess("Send email to $($Recipient -join ', ')"))
             {
                 try
                 {
-                    $SMTPRecipientList = [MimeKit.InternetAddressList]::new()
-                    foreach ($addr in $Recipient)
+                    $tableRows = foreach ($server in $serversNeedingAttention)
                     {
-                        $SMTPRecipientList.Add([MimeKit.InternetAddress]$addr)
+                        $rebootStyle = if ($server.RebootNeeded -eq 'YES')
+                        {
+                            "style='color: #c00; font-weight: bold;'"
+                        }
+                        else
+                        {
+                            ""
+                        }
+                        $updateStyle = if ($server.PendingUpdates -is [int] -and $server.PendingUpdates -gt 0)
+                        {
+                            "style='color: #e67e22; font-weight: bold;'"
+                        }
+                        else
+                        {
+                            ""
+                        }
+
+                        "<tr>
+                            <td>$($server.ComputerName)</td>
+                            <td $updateStyle>$($server.PendingUpdates)</td>
+                            <td $rebootStyle>$($server.RebootNeeded)</td>
+                        </tr>"
                     }
 
                     $htmlBody = @"
-<html>
+<!DOCTYPE html>
+<html lang="fr">
 <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <style>
-        body { font-family: Arial, sans-serif; }
-        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 12px; }
-        th { background-color: #4472C4; color: white; text-align: left; }
-        .warning { color: #c00; font-weight: bold; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; line-height: 1.6; }
+        table { border-collapse: collapse; width: 500px; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #4472C4; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
     </style>
 </head>
 <body>
-    <h2>$Header</h2>
-    <p><strong>$Intro</strong></p>
+    <h2 style="color: #4472C4;">$Title</h2>
+    <p>$Intro</p>
     <table>
-        <tr>
-            <th>$ThHost</th><th>$ThOS</th><th>$ThBoot</th><th>$ThFix</th><th>$ThDate</th>
-        </tr>
-"@
-                    foreach ($server in $serversNeedingReboot)
-                    {
-                        $htmlBody += "<tr><td class='warning'>$($server.ComputerName)</td><td>$($server.OperatingSystem)</td><td>$($server.LastBootUptime)</td><td>$($server.LastHotfixID)</td><td>$($server.LastHotfixDate)</td></tr>"
-                    }
-
-                    $htmlBody += @"
+        <thead>
+            <tr><th>$ThHost</th><th>$ThUpd</th><th>$ThReb</th></tr>
+        </thead>
+        <tbody>
+            $($tableRows -join '')
+        </tbody>
     </table>
     <p><strong>$Action</strong></p>
-    <p><small>$Footer</small></p>
 </body>
 </html>
 "@
                     Send-MailKitMessage -SMTPServer $SMTPServer -Port $Port -From $From `
-                        -RecipientList $SMTPRecipientList -Subject $Subject -HtmlBody $htmlBody
+                        -RecipientList ($Recipient -join ',') -Subject $Subject -HtmlBody $htmlBody
                 }
                 catch
                 {
