@@ -1,51 +1,11 @@
-function Send-MailForAreboot {
+function Send-MailForAreboot
+{
     <#
     .SYNOPSIS
         Send an email notification for servers requiring a reboot.
 
-    .DESCRIPTION
-        This function connects to a list of servers, checks if a reboot is pending,
-        and sends an email notification to the specified recipients if a reboot is required.
-
-    .PARAMETER ComputerName
-        The name(s) of the server(s) to check for pending reboot. Accepts an array of strings
-        or pipeline input.
-
-    .PARAMETER Recipient
-        The email address(es) of the recipient(s) to notify. Accepts an array of email addresses.
-
-    .PARAMETER SMTPServer
-        The SMTP server address to use for sending emails. Default is 'smtp.fmlogistic.fr'.
-
-    .PARAMETER Port
-        The SMTP port to use. Default is 25.
-
-    .PARAMETER From
-        The sender email address. Default is 'dsdpwinadm@fmlogistic.fr'.
-
-    .PARAMETER Credential
-        PSCredential object for remote connection to servers. If not provided, uses current
-        session credentials.
-
-    .EXAMPLE
-        Send-MailForAreboot -ComputerName 'SERVER01', 'SERVER02' -Recipient 'admin@domain.com'
-
-        Checks SERVER01 and SERVER02 for pending reboots and sends notification email if needed.
-
-    .EXAMPLE
-        'SERVER01', 'SERVER02' | Send-MailForAreboot -Recipient 'admin@domain.com', 'support@domain.com'
-
-        Accepts computer names from pipeline and notifies multiple recipients.
-
-    .EXAMPLE
-        Send-MailForAreboot -ComputerName 'SERVER01' -Recipient 'admin@domain.com' `
-            -SMTPServer 'smtp.custom.com' -Port 587 -From 'alerts@custom.com'
-
-        Uses custom SMTP configuration.
-
-    .NOTES
-        The function uses the COMPUTER class to detect pending reboots and Send-MailKitMessage
-        to send notifications. Email is only sent if at least one server requires a reboot.
+    .PARAMETER French
+        If specified, the email content (subject and body) will be in French.
     #>
 
     [CmdletBinding(SupportsShouldProcess = $true)]
@@ -73,54 +33,55 @@ function Send-MailForAreboot {
         [ValidateNotNull()]
         [System.Management.Automation.PSCredential]
         [System.Management.Automation.Credential()]
-        $Credential = [System.Management.Automation.PSCredential]::Empty
+        $Credential = [System.Management.Automation.PSCredential]::Empty,
+
+        [Parameter()]
+        [switch]$French
     )
 
-    begin {
+    begin
+    {
         $result = @()
         $serversNeedingReboot = @()
     }
 
-    process {
-        foreach ($computer in $ComputerName) {
-            try {
+    process
+    {
+        foreach ($computer in $ComputerName)
+        {
+            try
+            {
                 Write-Verbose "Checking reboot status for $computer..."
 
-                # Create COMPUTER object
-                if ($Credential -ne [System.Management.Automation.PSCredential]::Empty) {
+                if ($Credential -ne [System.Management.Automation.PSCredential]::Empty)
+                {
                     $computerObject = [COMPUTER]::new($computer, $Credential)
                 }
-                else {
+                else
+                {
                     $computerObject = [COMPUTER]::new($computer)
                 }
 
-                # Test if computer is online
-                if ($computerObject.Status -eq 'Ping OK') {
-                    Write-Verbose "Computer $computer is online. Checking for pending reboot..."
-
-                    # Get computer information including reboot status
+                if ($computerObject.Status -eq 'Ping OK')
+                {
                     $computerObject.GetAllInformation()
 
-                    # Check if reboot is needed
-                    if ($computerObject.RebootNeeded -eq 'YES') {
-                        Write-Verbose "Computer $computer requires a reboot."
-
+                    if ($computerObject.RebootNeeded -eq 'YES')
+                    {
                         $rebootInfo = [PSCustomObject]@{
-                            ComputerName         = $computerObject.Name
-                            OperatingSystem      = $computerObject.Operatingsystem
-                            LastBootUptime       = $computerObject.LastBootUptime
-                            LastHotfixID         = $computerObject.HotfixID
-                            LastHotfixDate       = $computerObject.HotFixInstalledOn
-                            RebootNeeded         = $computerObject.RebootNeeded
-                            Status               = 'SUCCESS'
+                            ComputerName    = $computerObject.Name
+                            OperatingSystem = $computerObject.Operatingsystem
+                            LastBootUptime  = $computerObject.LastBootUptime
+                            LastHotfixID    = $computerObject.HotfixID
+                            LastHotfixDate  = $computerObject.HotFixInstalledOn
+                            RebootNeeded    = $computerObject.RebootNeeded
+                            Status          = 'SUCCESS'
                         }
-
                         $serversNeedingReboot += $rebootInfo
                         $result += $rebootInfo
                     }
-                    else {
-                        Write-Verbose "Computer $computer does not require a reboot."
-
+                    else
+                    {
                         $result += [PSCustomObject]@{
                             ComputerName    = $computerObject.Name
                             OperatingSystem = $computerObject.Operatingsystem
@@ -129,9 +90,9 @@ function Send-MailForAreboot {
                         }
                     }
                 }
-                else {
-                    Write-Warning "Computer $computer is not reachable (Status: $($computerObject.Status))"
-
+                else
+                {
+                    Write-Warning "Computer $computer is not reachable"
                     $result += [PSCustomObject]@{
                         ComputerName = $computer
                         RebootNeeded = 'Unknown'
@@ -140,9 +101,9 @@ function Send-MailForAreboot {
                     }
                 }
             }
-            catch {
-                Write-Error "Error checking reboot status for $computer : $_"
-
+            catch
+            {
+                Write-Error "Error for $computer : $_"
                 $result += [PSCustomObject]@{
                     ComputerName = $computer
                     RebootNeeded = 'Unknown'
@@ -153,22 +114,46 @@ function Send-MailForAreboot {
         }
     }
 
-    end {
-        if ($serversNeedingReboot.Count -gt 0) {
-            Write-Verbose "Found $($serversNeedingReboot.Count) server(s) requiring reboot. Preparing to send email..."
+    end
+    {
+        if ($serversNeedingReboot.Count -gt 0)
+        {
+            if ($French)
+            {
+                $Subject = "Action Requise : $($serversNeedingReboot.Count) serveur(s) en attente de redémarrage"
+                $Header = "Alerte de Notification de Redémarrage"
+                $Intro = "Le(s) $($serversNeedingReboot.Count) serveur(s) suivant(s) nécessite(nt) une attention immédiate (redémarrage en attente) :"
+                $ThHost = "Nom du Serveur"
+                $ThOS = "Système d'Exploitation"
+                $ThBoot = "Dernier Boot"
+                $ThFix = "ID Dernier Hotfix"
+                $ThDate = "Date du Hotfix"
+                $Action = "Merci de planifier le redémarrage de ces serveurs dès que possible."
+                $Footer = "Ceci est un message automatique."
+            }
+            else
+            {
+                $Subject = "Action Required: $($serversNeedingReboot.Count) server(s) require reboot"
+                $Header = "Reboot Notification Alert"
+                $Intro = "The following $($serversNeedingReboot.Count) server(s) require immediate attention and have a pending reboot:"
+                $ThHost = "Computer Name"
+                $ThOS = "Operating System"
+                $ThBoot = "Last Boot Time"
+                $ThFix = "Last Hotfix ID"
+                $ThDate = "Last Hotfix Date"
+                $Action = "Please plan to reboot these servers at the earliest convenient time."
+                $Footer = "This is an automated message."
+            }
 
-            if ($PSCmdlet.ShouldProcess("Send reboot notification email to $($Recipient -join ', ')")) {
-                try {
-                    # Configure email recipients
+            if ($PSCmdlet.ShouldProcess("Send email to $($Recipient -join ', ')"))
+            {
+                try
+                {
                     $SMTPRecipientList = [MimeKit.InternetAddressList]::new()
-                    foreach ($emailAddress in $Recipient) {
-                        $SMTPRecipientList.Add([MimeKit.InternetAddress]$emailAddress)
+                    foreach ($addr in $Recipient)
+                    {
+                        $SMTPRecipientList.Add([MimeKit.InternetAddress]$addr)
                     }
-
-                    $SMTPSender = [MimeKit.MailboxAddress]$From
-
-                    # Build email subject and body
-                    $EmailSubject = "Action Required: $($serversNeedingReboot.Count) server(s) require reboot"
 
                     $htmlBody = @"
 <html>
@@ -176,73 +161,40 @@ function Send-MailForAreboot {
     <style>
         body { font-family: Arial, sans-serif; }
         table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #4472C4; color: white; }
-        tr:nth-child(even) { background-color: #f2f2f2; }
+        th, td { border: 1px solid #ddd; padding: 12px; }
+        th { background-color: #4472C4; color: white; text-align: left; }
         .warning { color: #c00; font-weight: bold; }
-        .summary { margin: 10px 0; }
     </style>
 </head>
 <body>
-    <h2>Reboot Notification Alert</h2>
-
-    <div class="summary">
-        <p><strong>The following $($serversNeedingReboot.Count) server(s) require immediate attention and have a pending reboot:</strong></p>
-    </div>
-
+    <h2>$Header</h2>
+    <p><strong>$Intro</strong></p>
     <table>
         <tr>
-            <th>Computer Name</th>
-            <th>Operating System</th>
-            <th>Last Boot Time</th>
-            <th>Last Hotfix ID</th>
-            <th>Last Hotfix Date</th>
+            <th>$ThHost</th><th>$ThOS</th><th>$ThBoot</th><th>$ThFix</th><th>$ThDate</th>
         </tr>
 "@
-
-                    foreach ($server in $serversNeedingReboot) {
-                        $htmlBody += @"
-        <tr>
-            <td class="warning">$($server.ComputerName)</td>
-            <td>$($server.OperatingSystem)</td>
-            <td>$($server.LastBootUptime)</td>
-            <td>$($server.LastHotfixID)</td>
-            <td>$($server.LastHotfixDate)</td>
-        </tr>
-"@
+                    foreach ($server in $serversNeedingReboot)
+                    {
+                        $htmlBody += "<tr><td class='warning'>$($server.ComputerName)</td><td>$($server.OperatingSystem)</td><td>$($server.LastBootUptime)</td><td>$($server.LastHotfixID)</td><td>$($server.LastHotfixDate)</td></tr>"
                     }
 
                     $htmlBody += @"
     </table>
-
-    <div class="summary">
-        <p><strong>Action Required:</strong> Please plan to reboot these servers at the earliest convenient time to complete the pending updates.</p>
-        <p><em>This is an automated message generated by PSPowerAdminTasks.</em></p>
-    </div>
-
+    <p><strong>$Action</strong></p>
+    <p><small>$Footer</small></p>
 </body>
 </html>
 "@
-
-                    # Send email
-                    Send-MailKitMessage -SMTPServer $SMTPServer `
-                        -Port $Port `
-                        -From $SMTPSender `
-                        -RecipientList $SMTPRecipientList `
-                        -Subject $EmailSubject `
-                        -HtmlBody $htmlBody
-
-                    Write-Verbose "Email notification sent successfully to $($Recipient -join ', ')"
+                    Send-MailKitMessage -SMTPServer $SMTPServer -Port $Port -From $From `
+                        -RecipientList $SMTPRecipientList -Subject $Subject -HtmlBody $htmlBody
                 }
-                catch {
-                    Write-Error "Error sending email notification: $_"
+                catch
+                {
+                    Write-Error "Failed to send email: $_"
                 }
             }
         }
-        else {
-            Write-Verbose "No servers require reboot. Email notification skipped."
-        }
-
         return $result
     }
 }
