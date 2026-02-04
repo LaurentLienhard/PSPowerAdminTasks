@@ -116,8 +116,9 @@ class DNS
         Write-Verbose "Searching for duplicate DNS entries on $($this.ComputerName)"
 
         $recordTypes = @('A', 'AAAA', 'CNAME', 'MX', 'SRV')
-        $duplicates = @()
+        $allRecords = @()
 
+        # Collect all records first
         foreach ($zone in $Zones)
         {
             Write-Verbose "Processing zone: $($zone.ZoneName)"
@@ -136,40 +137,29 @@ class DNS
 
                 Write-Verbose "Total records retrieved in $($zone.ZoneName): $($records.Count)"
 
-                # Group by HostName and RecordType to identify duplicates
-                $grouped = $records | Where-Object { $_.RecordType -in $recordTypes } |
-                    Group-Object -Property HostName, RecordType
-
-                foreach ($group in $grouped)
+                foreach ($record in $records)
                 {
-                    if ($group.Count -gt 1)
+                    if ($record.RecordType -in $recordTypes)
                     {
-                        Write-Verbose "Found $($group.Count) entries for $($group.Name)"
+                        $dataValue = "N/A"
 
-                        foreach ($record in $group.Group)
+                        # Extract data based on record type
+                        switch ($record.RecordType)
                         {
-                            $dataValue = "N/A"
+                            'A'     { $dataValue = $record.RecordData.IPv4Address.IPAddressToString }
+                            'AAAA'  { $dataValue = $record.RecordData.IPv6Address.IPAddressToString }
+                            'CNAME' { $dataValue = $record.RecordData.HostNameAlias }
+                            'MX'    { $dataValue = $record.RecordData.MailExchange }
+                            'SRV'   { $dataValue = "$($record.RecordData.DomainName):$($record.RecordData.Port)" }
+                        }
 
-                            # Extract data based on record type
-                            switch ($record.RecordType)
-                            {
-                                'A'     { $dataValue = $record.RecordData.IPv4Address.IPAddressToString }
-                                'AAAA'  { $dataValue = $record.RecordData.IPv6Address.IPAddressToString }
-                                'CNAME' { $dataValue = $record.RecordData.HostNameAlias }
-                                'MX'    { $dataValue = $record.RecordData.MailExchange }
-                                'SRV'   { $dataValue = "$($record.RecordData.DomainName):$($record.RecordData.Port)" }
-                            }
-
-                            $duplicateObj = [PSCustomObject]@{
-                                ComputerName   = $this.ComputerName
-                                ZoneName       = $zone.ZoneName
-                                HostName       = $record.HostName
-                                RecordType     = $record.RecordType
-                                IP_Target      = $dataValue
-                                Timestamp      = if ($null -eq $record.Timestamp) { "Static" } else { $record.Timestamp }
-                                DuplicateCount = $group.Count
-                            }
-                            $duplicates += $duplicateObj
+                        $allRecords += [PSCustomObject]@{
+                            ComputerName = $this.ComputerName
+                            ZoneName     = $zone.ZoneName
+                            HostName     = $record.HostName
+                            RecordType   = $record.RecordType
+                            IP_Target    = $dataValue
+                            Timestamp    = if ($null -eq $record.Timestamp) { "Static" } else { $record.Timestamp }
                         }
                     }
                 }
@@ -177,6 +167,33 @@ class DNS
             catch
             {
                 Write-Warning "Error processing zone $($zone.ZoneName): $($_.Exception.Message)"
+            }
+        }
+
+        # Group by IP_Target and RecordType to find duplicates
+        $duplicates = @()
+        $grouped = $allRecords | Group-Object -Property IP_Target, RecordType
+
+        foreach ($group in $grouped)
+        {
+            if ($group.Count -gt 1)
+            {
+                Write-Verbose "Found $($group.Count) entries for IP/RecordType: $($group.Name)"
+
+                # Get unique hostnames for this IP+RecordType combination
+                $hostNames = $group.Group.HostName | Select-Object -Unique
+                $hostNameList = $hostNames -join ', '
+
+                $duplicateObj = [PSCustomObject]@{
+                    ComputerName   = $this.ComputerName
+                    ZoneName       = $group.Group[0].ZoneName
+                    HostName       = $hostNameList
+                    RecordType     = $group.Group[0].RecordType
+                    IP_Target      = $group.Group[0].IP_Target
+                    Timestamp      = $group.Group[0].Timestamp
+                    DuplicateCount = $group.Count
+                }
+                $duplicates += $duplicateObj
             }
         }
 
