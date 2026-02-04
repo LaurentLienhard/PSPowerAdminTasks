@@ -1,14 +1,5 @@
 function Send-MailForAreboot
 {
-    <#
-    .SYNOPSIS
-        Send an email notification for servers requiring a reboot or having pending updates.
-
-    .DESCRIPTION
-        This function checks remote servers for pending reboots and available software updates.
-        It sends a localized HTML email if action is required.
-    #>
-
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -97,7 +88,7 @@ function Send-MailForAreboot
     {
         if ($serversNeedingAttention.Count -gt 0)
         {
-            # Localization avec entites HTML pour eviter les erreurs d'encodage
+            # Configuration des textes (Français avec entités HTML / Anglais)
             if ($French)
             {
                 $Subject = "Action Requise : Maintenance sur $($serversNeedingAttention.Count) serveur(s)"
@@ -106,7 +97,8 @@ function Send-MailForAreboot
                 $ThHost = "Serveur"
                 $ThUpd = "Updates"
                 $ThReb = "Reboot Requis"
-                $Action = "Action : Merci de planifier une intervention pour ces machines."
+                $Action = "Merci d'arr&ecirc;ter la grille autostore avant Dimanche 9H pour maintenance."
+                $Action2 = "L'autostore pourra &ecirc;tre relanc&eacute; &agrave; partir de Dimanche &agrave; 12h."
             }
             else
             {
@@ -116,7 +108,8 @@ function Send-MailForAreboot
                 $ThHost = "Computer"
                 $ThUpd = "Updates"
                 $ThReb = "Reboot Needed"
-                $Action = "Action: Please plan a maintenance window for these machines."
+                $Action = "Please stop the AutoStore grid before Sunday 9:00 AM for maintenance."
+                $Action2 = "AutoStore can be restarted from Sunday at 12:00 AM."
             }
 
             if ($PSCmdlet.ShouldProcess("Send email to $($Recipient -join ', ')"))
@@ -151,15 +144,16 @@ function Send-MailForAreboot
 
                     $htmlBody = @"
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; line-height: 1.6; }
-        table { border-collapse: collapse; width: 500px; margin-top: 15px; }
+        table { border-collapse: collapse; width: 500px; margin-top: 15px; margin-bottom: 20px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background-color: #4472C4; color: white; }
         tr:nth-child(even) { background-color: #f9f9f9; }
+        .highlight { color: #d35400; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -173,7 +167,8 @@ function Send-MailForAreboot
             $($tableRows -join '')
         </tbody>
     </table>
-    <p><strong>$Action</strong></p>
+    <p class="highlight">$Action</p>
+    <p class="highlight">$Action2</p>
 </body>
 </html>
 "@
