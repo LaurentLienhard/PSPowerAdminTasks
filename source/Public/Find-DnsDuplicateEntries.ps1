@@ -1,3 +1,4 @@
+function Find-DnsDuplicateEntries {
 <#
 .SYNOPSIS
 Finds duplicate DNS entries on Windows DNS servers.
@@ -17,18 +18,12 @@ Specifies the DNS zone name to search. If not provided, searches all zones.
 Specifies a user account that has permissions to query the DNS server.
 
 .EXAMPLE
-Find-DnsDuplicateEntries -ComputerName "DNS01"
-
-.EXAMPLE
-Find-DnsDuplicateEntries -ComputerName "DNS01" -ZoneName "contoso.com"
+Find-DnsDuplicateEntries -ComputerName "DNS01" -ZoneName "contoso.com" -Verbose
 
 .NOTES
 This function is part of the PSPowerAdminTasks module.
 #>
-function Find-DnsDuplicateEntries
-{
     [CmdletBinding()]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [string[]]$ComputerName,
@@ -40,112 +35,101 @@ function Find-DnsDuplicateEntries
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    Begin
-    {
+    Begin {
         $AllDuplicates = [System.Collections.Generic.List[PSObject]]::new()
+        # Define types to analyze for duplicates
+        $RecordTypes = @('A', 'AAAA', 'CNAME', 'MX', 'SRV')
     }
 
-    Process
-    {
-        foreach ($computer in $ComputerName)
-        {
-            Write-Verbose "Searching for duplicate DNS entries on $computer..."
-            try
-            {
-                $params = @{
+    Process {
+        foreach ($computer in $ComputerName) {
+            Write-Verbose "Connecting to DNS server: $computer"
+            $session = $null
+
+            try {
+                $sessionParams = @{
                     ComputerName = $computer
+                    ErrorAction  = 'Stop'
                 }
-
                 if ($PSBoundParameters.ContainsKey('Credential')) {
-                    $params['Credential'] = $Credential
+                    $sessionParams['Credential'] = $Credential
                 }
+                $session = New-CimSession @sessionParams
 
+                $zoneParams = @{
+                    CimSession  = $session
+                    ErrorAction = 'Stop'
+                }
                 if ($PSBoundParameters.ContainsKey('ZoneName')) {
-                    $params['ZoneName'] = $ZoneName
+                    $zoneParams['ZoneName'] = $ZoneName
                 }
 
-                # Get all DNS zones
-                $zones = Get-DnsServerZone @params -ErrorAction Stop
+                $zones = Get-DnsServerZone @zoneParams
 
-                foreach ($zone in $zones)
-                {
+                foreach ($zone in $zones) {
                     Write-Verbose "Processing zone: $($zone.ZoneName)"
 
-                    # Get all resource records from the zone
-                    $records = Get-DnsServerResourceRecord -ComputerName $computer `
-                        -ZoneName $zone.ZoneName `
-                        -RRType @('A', 'AAAA', 'CNAME', 'MX', 'SRV') `
-                        -ErrorAction SilentlyContinue
+                    # Fetching all records without RRType filter to avoid CIM serialization issues
+                    $records = Get-DnsServerResourceRecord -CimSession $session -ZoneName $zone.ZoneName -ErrorAction SilentlyContinue
 
                     if ($null -eq $records) {
+                        Write-Verbose "No records found in zone $($zone.ZoneName)"
                         continue
                     }
 
-                    # Convert to array if single record
-                    if ($records -isnot [System.Collections.IEnumerable]) {
-                        $records = @($records)
-                    }
+                    Write-Verbose "Total records retrieved in $($zone.ZoneName): $($records.Count)"
 
-                    # Group by HostName and RecordType to find duplicates
-                    $grouped = $records | Group-Object -Property HostName, RecordType
+                    # Group by HostName and RecordType to identify duplicates
+                    $grouped = $records | Where-Object { $_.RecordType -in $RecordTypes } | Group-Object -Property HostName, RecordType
 
-                    foreach ($group in $grouped)
-                    {
-                        if ($group.Count -gt 1)
-                        {
-                            Write-Verbose "Found $($group.Count) duplicate entries for $($group.Name)"
+                    foreach ($group in $grouped) {
+                        if ($group.Count -gt 1) {
+                            Write-Verbose "Found $($group.Count) entries for $($group.Name)"
 
-                            foreach ($record in $group.Group)
-                            {
-                                $ip = $null
-                                $entryType = $record.RecordType
+                            foreach ($record in $group.Group) {
+                                $dataValue = "N/A"
 
-                                # Extract IP based on record type
-                                if ($record.RecordType -eq 'A') {
-                                    $ip = $record.RecordData.IPv4Address.ToString()
-                                }
-                                elseif ($record.RecordType -eq 'AAAA') {
-                                    $ip = $record.RecordData.IPv6Address.ToString()
-                                }
-                                elseif ($record.RecordType -eq 'CNAME') {
-                                    $ip = $record.RecordData.CanonicalName.ToString()
-                                }
-                                elseif ($record.RecordType -eq 'MX') {
-                                    $ip = $record.RecordData.MailExchange.ToString()
-                                }
-                                elseif ($record.RecordType -eq 'SRV') {
-                                    $ip = "$($record.RecordData.Priority)/$($record.RecordData.Weight)/$($record.RecordData.Port)"
+                                # Extract data based on the specific object property available in CIM
+                                switch ($record.RecordType) {
+                                    'A'     { $dataValue = $record.RecordData.IPv4Address.IPAddressToString }
+                                    'AAAA'  { $dataValue = $record.RecordData.IPv6Address.IPAddressToString }
+                                    'CNAME' { $dataValue = $record.RecordData.HostNameAlias }
+                                    'MX'    { $dataValue = $record.RecordData.MailExchange }
+                                    'SRV'   { $dataValue = "$($record.RecordData.DomainName):$($record.RecordData.Port)" }
                                 }
 
                                 $duplicateObj = [PSCustomObject]@{
-                                    ComputerName  = $computer
-                                    ZoneName      = $zone.ZoneName
-                                    HostName      = $record.HostName
-                                    RecordType    = $entryType
-                                    IPAddress     = $ip
-                                    TimeToLive    = $record.TimeToLive
-                                    Timestamp     = Get-Date
+                                    ComputerName   = $computer
+                                    ZoneName       = $zone.ZoneName
+                                    HostName       = $record.HostName
+                                    RecordType     = $record.RecordType
+                                    IP_Target      = $dataValue
+                                    Timestamp      = if ($null -eq $record.Timestamp) { "Static" } else { $record.Timestamp }
                                     DuplicateCount = $group.Count
                                 }
-
                                 $AllDuplicates.Add($duplicateObj)
                             }
                         }
                     }
                 }
             }
-            catch
-            {
+            catch {
                 Write-Warning "Error processing DNS server $computer : $($_.Exception.Message)"
+            }
+            finally {
+                if ($null -ne $session) {
+                    Remove-CimSession $session
+                }
             }
         }
     }
 
-    End
-    {
-        if ($AllDuplicates.Count -gt 0)
-        {
-            return $AllDuplicates | Sort-Object -Property ZoneName, HostName, RecordType
+    End {
+        if ($AllDuplicates.Count -gt 0) {
+            return $AllDuplicates | Sort-Object -Property ZoneName, HostName
+        }
+        else {
+            Write-Host "No duplicate DNS entries found." -ForegroundColor Green
         }
     }
 }
