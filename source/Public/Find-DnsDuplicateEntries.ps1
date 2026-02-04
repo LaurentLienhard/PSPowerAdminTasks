@@ -29,6 +29,7 @@ function Find-DnsDuplicateEntries
 {
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '')]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [string[]]$ComputerName,
@@ -112,7 +113,7 @@ function Find-DnsDuplicateEntries
         }
         else
         {
-            Write-Host "No duplicate DNS entries found." -ForegroundColor Green
+            Write-Verbose "No duplicate DNS entries found."
         }
     }
 }
