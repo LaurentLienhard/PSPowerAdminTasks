@@ -6,15 +6,21 @@
 # Synopsis: Deploy built module to remote servers
 task Deploy_Module {
     param(
-        $BuildInfo,
         [Parameter(Mandatory = $false)]
         [System.Management.Automation.PSCredential]$Credential
     )
 
     Write-Build -Color Cyan "Deploying module to remote servers..."
 
+    # Get configuration values
+    $sourceManifest = Get-Item -Path "$BuildRoot/source/*.psd1" | Select-Object -First 1
+    $ProjectName = $sourceManifest.BaseName
+    $OutputDirectory = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path $BuildRoot $OutputDirectory }
+    $BuiltModuleSubdirectory = 'module'
+
     # Get the built module path
-    $modulePath = Join-Path $BuildInfo.OutputDirectory 'module' $BuildInfo.ProjectName
+    $buildModuleOutput = Join-Path $OutputDirectory $BuiltModuleSubdirectory
+    $modulePath = Join-Path $buildModuleOutput $ProjectName
 
     if (-not (Test-Path $modulePath)) {
         Write-Build -Color Red "Module path not found: $modulePath"
@@ -74,7 +80,7 @@ task Deploy_Module {
 
             # Copy the module to the remote server
             Copy-Item -Path "$modulePath/*" `
-                      -Destination "$($server.DestinationPath)$($BuildInfo.ProjectName)" `
+                      -Destination "$($server.DestinationPath)$ProjectName" `
                       -ToSession $session `
                       -Recurse `
                       -Force
@@ -84,7 +90,7 @@ task Deploy_Module {
             # Optional: Verify the module is accessible
             $result = Invoke-Command -Session $session -ScriptBlock {
                 Get-Module -Name $using:moduleName -ListAvailable
-            } -ArgumentList $BuildInfo.ProjectName
+            } -ArgumentList $ProjectName
 
             if ($result) {
                 Write-Build -Color Green "Module verified on $($server.ComputerName): v$($result.Version)"
@@ -104,7 +110,6 @@ task Deploy_Module {
 # Synopsis: Deploy module to a specific remote server
 task Deploy_Module_Custom {
     param(
-        $BuildInfo,
         [Parameter(Mandatory = $false)]
         [string]$ComputerName,
         [Parameter(Mandatory = $false)]
@@ -119,7 +124,15 @@ task Deploy_Module_Custom {
         throw "ComputerName parameter is mandatory"
     }
 
-    $modulePath = Join-Path $BuildInfo.OutputDirectory 'module' $BuildInfo.ProjectName
+    # Get configuration values
+    $sourceManifest = Get-Item -Path "$BuildRoot/source/*.psd1" | Select-Object -First 1
+    $ProjectName = $sourceManifest.BaseName
+    $OutputDirectory = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path $BuildRoot $OutputDirectory }
+    $BuiltModuleSubdirectory = 'module'
+
+    # Get the built module path
+    $buildModuleOutput = Join-Path $OutputDirectory $BuiltModuleSubdirectory
+    $modulePath = Join-Path $buildModuleOutput $ProjectName
 
     if (-not (Test-Path $modulePath)) {
         Write-Build -Color Red "Module path not found: $modulePath"
@@ -143,7 +156,7 @@ task Deploy_Module_Custom {
         Write-Build -Color Green "Connected to $ComputerName"
 
         Copy-Item -Path "$modulePath/*" `
-                  -Destination "$DestinationPath$($BuildInfo.ProjectName)" `
+                  -Destination "$DestinationPath$ProjectName" `
                   -ToSession $session `
                   -Recurse `
                   -Force
@@ -153,7 +166,7 @@ task Deploy_Module_Custom {
         # Verify deployment
         $result = Invoke-Command -Session $session -ScriptBlock {
             Get-Module -Name $using:moduleName -ListAvailable
-        } -ArgumentList $BuildInfo.ProjectName
+        } -ArgumentList $ProjectName
 
         if ($result) {
             Write-Build -Color Green "Module verified: v$($result.Version)"
@@ -163,6 +176,99 @@ task Deploy_Module_Custom {
     }
     catch {
         Write-Build -Color Red "Deployment failed: $($_.Exception.Message)"
+        throw $_
+    }
+}
+
+# Synopsis: Deploy built module to local machine
+task Deploy_Local {
+    Write-Build -Color Cyan "Deploying module locally..."
+
+    # Get configuration values
+    $sourceManifest = Get-Item -Path "$BuildRoot/source/*.psd1" | Select-Object -First 1
+    $ProjectName = $sourceManifest.BaseName
+    $OutputDirectory = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path $BuildRoot $OutputDirectory }
+    $BuiltModuleSubdirectory = 'module'
+
+    # Get the built module path
+    $buildModuleOutput = Join-Path $OutputDirectory $BuiltModuleSubdirectory
+    $modulePath = Join-Path $buildModuleOutput $ProjectName
+
+    if (-not (Test-Path $modulePath)) {
+        Write-Build -Color Red "Module path not found: $modulePath"
+        Write-Build -Color Yellow "Build the module first with: ./build.ps1 -Tasks build"
+        throw "Module not found at $modulePath"
+    }
+
+    Write-Build -Color Green "Found module at: $modulePath"
+
+    # Determine destination based on platform and admin rights
+    if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
+        $systemPath = "C:\Program Files\WindowsPowerShell\Modules\$ProjectName"
+        $userPath = "$HOME\Documents\WindowsPowerShell\Modules\$ProjectName"
+    }
+    else {
+        # On macOS/Linux, use .local/share or .config
+        $systemPath = "/usr/local/share/powershell/Modules/$ProjectName"
+        $userPath = "$HOME/.local/share/powershell/Modules/$ProjectName"
+    }
+
+    # Check if running as administrator (Windows only)
+    $isAdmin = $false
+    if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
+        try {
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        }
+        catch {
+            Write-Build -Color Yellow "Could not determine admin status"
+            $isAdmin = $false
+        }
+    }
+    else {
+        Write-Build -Color DarkGray "Platform: $($PSVersionTable.OS) - using user module path"
+    }
+
+    if ($isAdmin) {
+        $destination = $systemPath
+        Write-Build -Color Green "Running as Administrator - deploying to system path"
+        Write-Build -Color DarkGray "Destination: $destination"
+    }
+    else {
+        $destination = $userPath
+        Write-Build -Color Yellow "Not running as Administrator - deploying to user path"
+        Write-Build -Color DarkGray "Destination: $destination"
+    }
+
+    try {
+        # Create destination directory if it doesn't exist
+        if (-not (Test-Path $destination)) {
+            New-Item -ItemType Directory -Path $destination -Force | Out-Null
+            Write-Build -Color Green "Created directory: $destination"
+        }
+
+        # Copy module files
+        Write-Build -Color Cyan "Copying module files..."
+        Copy-Item -Path "$modulePath/*" -Destination $destination -Recurse -Force
+
+        Write-Build -Color Green "Successfully copied module to: $destination"
+
+        # Verify deployment
+        $module = Get-Module -Name $ProjectName -ListAvailable | Where-Object { $_.Path -like "$destination*" }
+        if ($module) {
+            Write-Build -Color Green "Module verified: v$($module.Version)"
+            Write-Build -Color Green "You can now use: Import-Module $ProjectName"
+        }
+        else {
+            Write-Build -Color Yellow "Warning: Module could not be verified"
+        }
+    }
+    catch {
+        Write-Build -Color Red "Deployment failed: $($_.Exception.Message)"
+
+        if (-not $isAdmin -and $_ -like "*denied*") {
+            Write-Build -Color Yellow "Tip: Run as Administrator to deploy to system path"
+        }
+
         throw $_
     }
 }

@@ -242,6 +242,9 @@ process
             }
         }
 
+        # Make BuildInfo available to tasks
+        Set-Variable -Name 'BuildInfo' -Value $BuildInfo -Scope Script
+
         # If the Invoke-Build Task Header is specified in the Build Info, set it.
         if ($BuildInfo.TaskHeader)
         {
@@ -317,12 +320,20 @@ process
         }
 
         # Loading Build Tasks defined in the .build/ folder (will override the ones imported above if same task name).
-        Get-ChildItem -Path '.build/' -Recurse -Include '*.ps1' -ErrorAction Ignore |
-            ForEach-Object {
-                "Importing file $($_.BaseName)" | Write-Verbose
-
-                . $_.FullName
+        # Using [System.IO.Directory]::GetFiles() for better cross-platform compatibility (macOS Get-ChildItem -Recurse has issues)
+        $buildDir = '.build'
+        if (Test-Path $buildDir) {
+            try {
+                $taskFiles = @([System.IO.Directory]::GetFiles((Resolve-Path $buildDir), '*.ps1', [System.IO.SearchOption]::AllDirectories))
+                foreach ($taskFile in $taskFiles) {
+                    "Importing file $(Split-Path -Leaf $taskFile)" | Write-Verbose
+                    . $taskFile
+                }
             }
+            catch {
+                Write-Warning "Error loading build tasks from $buildDir : $_"
+            }
+        }
 
         # Synopsis: Empty task, useful to test the bootstrap process.
         task noop { }

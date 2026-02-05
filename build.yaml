@@ -60,6 +60,10 @@ BuildWorkflow:
 
   deploy:
     - build
+    - Deploy_Local
+
+  deploy_remote:
+    - build
     - Deploy_Module
 
   # Defining test task to be run when invoking `./build.ps1 -Tasks test`
