@@ -1,5 +1,34 @@
 function Send-MailForAreboot
 {
+    <#
+    .SYNOPSIS
+        Sends an email notification for servers requiring a reboot or having pending updates.
+
+    .DESCRIPTION
+        This function scans remote servers to retrieve the count of available software updates and checks the 'Pending Reboot' status.
+        It generates a formatted HTML email with specific maintenance instructions for the AutoStore grid.
+
+    .PARAMETER ComputerName
+        List of computer names or server addresses to scan.
+
+    .PARAMETER Recipient
+        Email address(es) of the recipient(s).
+
+    .PARAMETER SMTPServer
+        The SMTP server used for sending (Default: smtp.fmlogistic.fr).
+
+    .PARAMETER Port
+        The SMTP port (Default: 25).
+
+    .PARAMETER From
+        The sender's email address (Default: dsdpwinadm@fmlogistic.fr).
+
+    .PARAMETER Credential
+        The credentials required to connect to the remote servers.
+
+    .PARAMETER French
+        If specified, the email content will be translated into French using proper HTML entities for encoding safety.
+    #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -88,7 +117,7 @@ function Send-MailForAreboot
     {
         if ($serversNeedingAttention.Count -gt 0)
         {
-            # Configuration des textes (Français avec entités HTML / Anglais)
+            # Email Content Configuration
             if ($French)
             {
                 $Subject = "Action Requise : Maintenance sur $($serversNeedingAttention.Count) serveur(s)"
@@ -109,7 +138,7 @@ function Send-MailForAreboot
                 $ThUpd = "Updates"
                 $ThReb = "Reboot Needed"
                 $Action = "Please stop the AutoStore grid before Sunday 9:00 AM for maintenance."
-                $Action2 = "AutoStore can be restarted from Sunday at 12:00 AM."
+                $Action2 = "AutoStore can be restarted from Sunday at 12:00 PM."
             }
 
             if ($PSCmdlet.ShouldProcess("Send email to $($Recipient -join ', ')"))
@@ -149,11 +178,11 @@ function Send-MailForAreboot
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; line-height: 1.6; }
-        table { border-collapse: collapse; width: 500px; margin-top: 15px; margin-bottom: 20px; }
+        table { border-collapse: collapse; width: 500px; margin-top: 15px; margin-bottom: 25px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background-color: #4472C4; color: white; }
         tr:nth-child(even) { background-color: #f9f9f9; }
-        .highlight { color: #d35400; font-weight: bold; }
+        .instruction { font-size: 16px; font-weight: bold; color: #d35400; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -167,8 +196,8 @@ function Send-MailForAreboot
             $($tableRows -join '')
         </tbody>
     </table>
-    <p class="highlight">$Action</p>
-    <p class="highlight">$Action2</p>
+    <p class="instruction">$Action</p>
+    <p class="instruction">$Action2</p>
 </body>
 </html>
 "@
