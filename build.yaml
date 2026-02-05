@@ -58,7 +58,9 @@ BuildWorkflow:
     - build
     - package_module_nupkg
 
-
+  deploy:
+    - build
+    - Deploy_Module
 
   # Defining test task to be run when invoking `./build.ps1 -Tasks test`
   test:
