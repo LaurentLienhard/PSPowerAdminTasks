@@ -202,9 +202,30 @@ task Deploy_Local {
 
     # Determine destination based on platform
     if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
-        $destination = "C:\Program Files\PowerShell\Modules\$ProjectName"
-        Write-Build -Color Green "Deploying to system path"
-        Write-Build -Color DarkGray "Destination: $destination"
+        $systemPath = "C:\Program Files\PowerShell\Modules\$ProjectName"
+        # PowerShell 7 user module path
+        $userPath = "$HOME\AppData\Local\powershell\Modules\$ProjectName"
+
+        # Check if running as administrator
+        $isAdmin = $false
+        try {
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        }
+        catch {
+            $isAdmin = $false
+        }
+
+        if ($isAdmin) {
+            $destination = $systemPath
+            Write-Build -Color Green "Running as Administrator - deploying to system path"
+            Write-Build -Color DarkGray "Destination: $destination"
+        }
+        else {
+            Write-Build -Color Yellow "Not running as Administrator - deploying to user path (PowerShell 7)"
+            Write-Build -Color DarkGray "System path requires admin: $systemPath"
+            Write-Build -Color DarkGray "User path: $userPath"
+            $destination = $userPath
+        }
     }
     else {
         # On macOS/Linux, use .local/share
@@ -239,8 +260,22 @@ task Deploy_Local {
     catch {
         Write-Build -Color Red "Deployment failed: $($_.Exception.Message)"
 
-        if (-not $isAdmin -and $_ -like "*denied*") {
-            Write-Build -Color Yellow "Tip: Run as Administrator to deploy to system path"
+        # Provide helpful error message for permission issues on Windows
+        if (($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') -and
+            ($_ -like "*denied*" -or $_.Exception.Message -like "*Access*")) {
+            Write-Build -Color Yellow ""
+            Write-Build -Color Yellow "⚠️  Permission Denied - You need administrator privileges"
+            Write-Build -Color Yellow ""
+            Write-Build -Color DarkGray "Options:"
+            Write-Build -Color DarkGray "1. Run PowerShell as Administrator and try again:"
+            Write-Build -Color DarkGray "   ./build.ps1 -Tasks deploy"
+            Write-Build -Color DarkGray ""
+            Write-Build -Color DarkGray "2. Or deploy to user directory instead:"
+            if (-not [string]::IsNullOrEmpty($userPath)) {
+                Write-Build -Color DarkGray "   $userPath"
+            }
+            Write-Build -Color DarkGray ""
+            Write-Build -Color DarkGray "   Manual install: Copy-Item -Path '$modulePath/*' -Destination '$userPath' -Recurse -Force"
         }
 
         throw $_

@@ -19,8 +19,32 @@ Compile et installe le module localement:
 ```
 
 Le module sera installé à:
-- **Windows**: `C:\Program Files\PowerShell\Modules\PSPowerAdminTasks`
+- **Windows (admin)**: `C:\Program Files\PowerShell\Modules\PSPowerAdminTasks`
+- **Windows (user)**: `$HOME\Documents\PowerShell\Modules\PSPowerAdminTasks` (si pas admin)
 - **macOS/Linux**: `$HOME/.local/share/powershell/Modules/PSPowerAdminTasks`
+
+#### ⚠️ Droits d'administrateur sur Windows
+
+Le chemin système `C:\Program Files\PowerShell\Modules` nécessite les droits d'administrateur.
+
+**Solutions:**
+
+1. **Lancer PowerShell en tant qu'administrateur** (recommandé):
+   ```powershell
+   # Lancez PowerShell en tant qu'admin, puis:
+   ./build.ps1 -Tasks deploy
+   ```
+
+2. **Déployer en tant qu'utilisateur normal** (automatique):
+   - Si vous lancez sans droits admin, le module s'installe dans: `$HOME\Documents\PowerShell\Modules`
+   - Le script affiche un avertissement mais procède au déploiement
+
+3. **Installer manuellement dans le chemin utilisateur**:
+   ```powershell
+   $modulePath = "output/module/PSPowerAdminTasks"
+   $destination = "$HOME\Documents\PowerShell\Modules\PSPowerAdminTasks"
+   Copy-Item -Path "$modulePath/*" -Destination $destination -Recurse -Force
+   ```
 
 ### Déploiement sur serveurs distants
 
