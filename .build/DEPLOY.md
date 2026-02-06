@@ -19,7 +19,7 @@ Compile et installe le module localement:
 ```
 
 Le module sera installé à:
-- **Windows (admin)**: `C:\Program Files\WindowsPowerShell\Modules\PSPowerAdminTasks`
+- **Windows (admin)**: `C:\Windows\System32\WindowsPowerShell\v1.0\Modules\PSPowerAdminTasks`
 - **Windows (user)**: `$HOME\Documents\WindowsPowerShell\Modules\PSPowerAdminTasks`
 - **macOS/Linux**: `$HOME/.local/share/powershell/Modules/PSPowerAdminTasks`
 

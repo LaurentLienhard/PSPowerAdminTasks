@@ -202,7 +202,7 @@ task Deploy_Local {
 
     # Determine destination based on platform and admin rights
     if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
-        $systemPath = "C:\Program Files\WindowsPowerShell\Modules\$ProjectName"
+        $systemPath = "C:\Windows\System32\WindowsPowerShell\v1.0\Modules\$ProjectName"
         $userPath = "$HOME\Documents\WindowsPowerShell\Modules\$ProjectName"
     }
     else {
