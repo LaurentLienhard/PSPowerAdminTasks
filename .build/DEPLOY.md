@@ -10,15 +10,30 @@ Ce guide explique comment déployer le module `PSPowerAdminTasks` sur des serveu
 
 ## 🚀 Méthodes de déploiement
 
-### Méthode 1: Utiliser le contexte utilisateur actuel (Plus simple)
+### Déploiement local (par défaut)
 
-Si vous avez les permissions d'admin sur les serveurs:
+Compile et installe le module localement:
 
 ```powershell
 ./build.ps1 -Tasks deploy
 ```
 
-### Méthode 2: Sauvegarder les credentials (Recommandé)
+Le module sera installé à:
+- **Windows (admin)**: `C:\Program Files\WindowsPowerShell\Modules\PSPowerAdminTasks`
+- **Windows (user)**: `$HOME\Documents\WindowsPowerShell\Modules\PSPowerAdminTasks`
+- **macOS/Linux**: `$HOME/.local/share/powershell/Modules/PSPowerAdminTasks`
+
+### Déploiement sur serveurs distants
+
+#### Méthode 1: Utiliser le contexte utilisateur actuel (Plus simple)
+
+Si vous avez les permissions d'admin sur les serveurs:
+
+```powershell
+./build.ps1 -Tasks deploy_remote
+```
+
+#### Méthode 2: Sauvegarder les credentials (Recommandé)
 
 **Étape 1: Sauvegarder les credentials**
 ```powershell
@@ -29,7 +44,7 @@ Cela crée un fichier `deploy-credentials.xml` chiffré dans `.build/config/`
 
 **Étape 2: Déployer avec les credentials sauvegardés**
 ```powershell
-./build.ps1 -Tasks deploy
+./build.ps1 -Tasks deploy_remote
 ```
 
 Ou avec une tâche spécifique:
@@ -57,28 +72,61 @@ $env:DEPLOY_CREDENTIAL_PATH = 'C:\path\to\saved-credentials.xml'
 ./build.ps1 -Tasks deploy
 ```
 
-## 📝 Configuration des serveurs
+## 📝 Configuration des serveurs (Sécurisée)
 
-Éditez le fichier `.build/tasks/Deploy-Module.build.ps1` et modifiez le tableau `$servers`:
+La liste des serveurs distants est stockée dans un fichier **séparé et non synchronisé** avec GitHub pour des raisons de sécurité.
 
+### Configuration initiale
+
+**Étape 1: Créer le fichier de configuration**
 ```powershell
-$servers = @(
+cp .build/deploy-servers.ps1.example .build/deploy-servers.ps1
+```
+
+**Étape 2: Éditer le fichier avec vos serveurs**
+```powershell
+# Éditez .build/deploy-servers.ps1
+# Le fichier contient:
+Write-Output -NoEnumerate @(
     @{
         ComputerName = 'server1.contoso.com'
         DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
-    }
+    },
     @{
         ComputerName = 'server2.contoso.com'
+        DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
+    },
+    @{
+        ComputerName = 'server3.contoso.com'
         DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
     }
 )
 ```
 
+### Voir les serveurs configurés
+
+```powershell
+./build.ps1 -Tasks Deploy_List_Servers
+```
+
+### ⚠️ Important - Sécurité
+
+- Le fichier `.build/deploy-servers.ps1` est **ignoré par git** (voir `.gitignore`)
+- Les noms de serveurs et chemins réseau ne sont **jamais synchronisés** sur le dépôt
+- Le fichier `.build/deploy-servers.ps1.example` est le template à copier et adapter
+
 ## 🎯 Exemples de déploiement
 
-### Déployer sur tous les serveurs configurés
+### Déployer localement (défaut)
 ```powershell
 ./build.ps1 -Tasks deploy
+```
+
+Cela compile le module et l'installe sur la machine locale dans le répertoire approprié selon votre système d'exploitation.
+
+### Déployer sur tous les serveurs distants configurés
+```powershell
+./build.ps1 -Tasks deploy_remote
 ```
 
 ### Déployer sur un serveur spécifique
@@ -158,9 +206,12 @@ Enable-PSRemoting -Force
 
 | Tâche | Description |
 |-------|-------------|
-| `deploy` | Compile et déploie sur tous les serveurs configurés |
-| `Deploy_Module` | Déploie sur tous les serveurs (avec credentials) |
-| `Deploy_Module_Custom` | Déploie sur un serveur spécifique |
+| `deploy` | Compile et déploie localement |
+| `deploy_remote` | Compile et déploie sur tous les serveurs distants configurés |
+| `Deploy_Module` | Déploie sur tous les serveurs distants (avec credentials) |
+| `Deploy_Module_Custom` | Déploie sur un serveur distant spécifique |
+| `Deploy_Local` | Déploie localement avec détection automatique admin/user |
+| `Deploy_List_Servers` | Affiche la liste des serveurs distants configurés |
 | `Save_Deploy_Credentials` | Sauvegarde les credentials de manière sécurisée |
 | `Load_Deploy_Credentials` | Charge les credentials sauvegardés |
 | `Clear_Deploy_Credentials` | Efface les credentials sauvegardés |
