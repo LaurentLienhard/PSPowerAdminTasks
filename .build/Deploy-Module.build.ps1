@@ -200,40 +200,16 @@ task Deploy_Local {
 
     Write-Build -Color Green "Found module at: $modulePath"
 
-    # Determine destination based on platform and admin rights
+    # Determine destination based on platform
     if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
-        $systemPath = "C:\Windows\System32\WindowsPowerShell\v1.0\Modules\$ProjectName"
-        $userPath = "$HOME\Documents\WindowsPowerShell\Modules\$ProjectName"
-    }
-    else {
-        # On macOS/Linux, use .local/share or .config
-        $systemPath = "/usr/local/share/powershell/Modules/$ProjectName"
-        $userPath = "$HOME/.local/share/powershell/Modules/$ProjectName"
-    }
-
-    # Check if running as administrator (Windows only)
-    $isAdmin = $false
-    if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
-        try {
-            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        }
-        catch {
-            Write-Build -Color Yellow "Could not determine admin status"
-            $isAdmin = $false
-        }
-    }
-    else {
-        Write-Build -Color DarkGray "Platform: $($PSVersionTable.OS) - using user module path"
-    }
-
-    if ($isAdmin) {
-        $destination = $systemPath
-        Write-Build -Color Green "Running as Administrator - deploying to system path"
+        $destination = "C:\Program Files\PowerShell\Modules\$ProjectName"
+        Write-Build -Color Green "Deploying to system path"
         Write-Build -Color DarkGray "Destination: $destination"
     }
     else {
-        $destination = $userPath
-        Write-Build -Color Yellow "Not running as Administrator - deploying to user path"
+        # On macOS/Linux, use .local/share
+        $destination = "$HOME/.local/share/powershell/Modules/$ProjectName"
+        Write-Build -Color DarkGray "Platform: $($PSVersionTable.OS) - using user module path"
         Write-Build -Color DarkGray "Destination: $destination"
     }
 
