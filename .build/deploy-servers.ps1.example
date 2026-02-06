@@ -1,0 +1,24 @@
+<#
+    deploy-servers.ps1.example
+
+    This file contains the list of remote servers for deployment.
+    Copy this file to deploy-servers.ps1 and update with your actual servers.
+    The deploy-servers.ps1 file is NOT tracked in git (see .gitignore).
+#>
+
+# List of remote servers to deploy to
+# Update with your actual server information
+Write-Output -NoEnumerate @(
+    @{
+        ComputerName = 'server1.contoso.com'
+        DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
+    },
+    @{
+        ComputerName = 'server2.contoso.com'
+        DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
+    },
+    @{
+        ComputerName = 'server3.contoso.com'
+        DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
+    }
+)

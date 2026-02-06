@@ -30,6 +30,21 @@ task Deploy_Module {
 
     Write-Build -Color Green "Found module at: $modulePath"
 
+    # Load server configuration from external file
+    $serversConfigFile = Join-Path $BuildRoot '.build/deploy-servers.ps1'
+    if (-not (Test-Path $serversConfigFile)) {
+        Write-Build -Color Red "Server configuration file not found: $serversConfigFile"
+        Write-Build -Color Yellow "Please copy '.build/deploy-servers.ps1.example' to '.build/deploy-servers.ps1' and update with your servers."
+        throw "Server configuration file is missing"
+    }
+
+    $servers = @(. $serversConfigFile 2>$null)
+
+    if (-not $servers -or $servers.Count -eq 0 -or $servers[0] -isnot [hashtable]) {
+        Write-Build -Color Red "No servers configured in $serversConfigFile"
+        throw "Server list is empty"
+    }
+
     # Get credentials if not provided
     if (-not $Credential) {
         # Try to get from environment variable first
@@ -42,23 +57,6 @@ task Deploy_Module {
             Write-Build -Color DarkGray "Tip: Use -Credential parameter or set DEPLOY_CREDENTIAL_PATH environment variable"
         }
     }
-
-    # Configuration: List of remote servers to deploy to
-    # You can modify this array to add/remove servers
-    $servers = @(
-        @{
-            ComputerName = 'server1.contoso.com'
-            DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
-        }
-        @{
-            ComputerName = 'server2.contoso.com'
-            DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
-        }
-        @{
-            ComputerName = 'server3.contoso.com'
-            DestinationPath = 'C:\Program Files\WindowsPowerShell\Modules\'
-        }
-    )
 
     # Deploy to each server
     foreach ($server in $servers) {
@@ -276,7 +274,42 @@ task Deploy_Local {
 # Synopsis: List configured deployment servers
 task Deploy_List_Servers {
     Write-Build -Color Cyan "Configured deployment servers:"
-    Write-Build -Color DarkGray "Edit '.build/tasks/Deploy-Module.build.ps1' to modify server list"
-    Write-Build ""
+    Write-Build -Color DarkGray "Edit '.build/deploy-servers.ps1' to modify server list"
+    Write-Build -Color DarkGray "See '.build/deploy-servers.ps1.example' for template"
+    Write-Build -Color White ""
+
+    $serversConfigFile = Join-Path $BuildRoot '.build/deploy-servers.ps1'
+    if (Test-Path $serversConfigFile) {
+        try {
+            $rawOutput = & {
+                . $serversConfigFile 6>$null 4>$null 3>$null 2>$null
+            }
+
+            # Handle the output - it could be a single hashtable or array
+            if ($rawOutput -is [object[]]) {
+                $servers = @($rawOutput | Where-Object { $_ -is [hashtable] })
+            } elseif ($rawOutput -is [hashtable]) {
+                $servers = @($rawOutput)
+            } else {
+                $servers = @()
+            }
+
+            if ($servers.Count -gt 0) {
+                Write-Build -Color White ""
+                foreach ($server in $servers) {
+                    if ($server.ContainsKey('ComputerName')) {
+                        Write-Build -Color Green "  • $($server.ComputerName) → $($server.DestinationPath)"
+                    }
+                }
+            }
+        } catch {
+            Write-Build -Color Yellow "Error reading server configuration: $_"
+        }
+    }
+    else {
+        Write-Build -Color Yellow "No server configuration found. Create '.build/deploy-servers.ps1' from '.build/deploy-servers.ps1.example'"
+    }
+
+    Write-Build -Color White ""
     Write-Build -Color Yellow "Usage: ./build.ps1 -Tasks Deploy_Module"
 }
