@@ -203,8 +203,8 @@ task Deploy_Local {
     # Determine destination based on platform
     if ($PSVersionTable.Platform -eq 'Win32NT' -or $PSVersionTable.OS -like 'Windows*') {
         $systemPath = "C:\Program Files\PowerShell\Modules\$ProjectName"
-        # PowerShell 7 user module path
-        $userPath = "$HOME\AppData\Local\powershell\Modules\$ProjectName"
+        # User module path
+        $userPath = "$HOME\Documents\PowerShell\Modules\$ProjectName"
 
         # Check if running as administrator
         $isAdmin = $false
