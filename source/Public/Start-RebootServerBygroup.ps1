@@ -36,7 +36,8 @@
         return $RuntimeParameterDictionary
     }
 
-    begin {
+    BEGIN
+    {
         $WSUSGroupName = $PSBoundParameters['WSUSGroupName']
         $OSRegex = '2003|2008|2012'
 
@@ -49,7 +50,8 @@
         }
     }
 
-    process {
+    PROCESS
+    {
         Write-Verbose "Fetching members for group: $WSUSGroupName"
 
         # Filter for computer objects to avoid errors with nested users/groups

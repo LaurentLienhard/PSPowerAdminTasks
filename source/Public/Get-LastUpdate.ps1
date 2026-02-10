@@ -1,36 +1,36 @@
-<#
-.SYNOPSIS
-Retrieves the last update information for computers.
-
-.DESCRIPTION
-Gets the last Windows update installation date and related information from remote computers.
-
-.PARAMETER ComputerName
-Specifies the name of the computer to check.
-
-.PARAMETER OnlySupported
-Retrieve updates only for supported operating systems.
-
-.PARAMETER UploadToGDriveParams
-Parameters for uploading results to Google Drive.
-
-.PARAMETER SendByMail
-Send the results via email.
-
-.PARAMETER Credential
-Specifies credentials for remote connections.
-
-.EXAMPLE
-Get-LastUpdate -ComputerName Server01
-
-.EXAMPLE
-Get-LastUpdate -ComputerName Server01, Server02 -SendByMail
-
-.NOTES
-Part of PSPowerAdminTasks module.
-#>
 function Get-LastUpdate
 {
+    <#
+    .SYNOPSIS
+        Retrieves the last update information for computers.
+
+    .DESCRIPTION
+        Gets the last Windows update installation date and related information from remote computers.
+
+    .PARAMETER ComputerName
+        Specifies the name of the computer to check.
+
+    .PARAMETER OnlySupported
+        Retrieve updates only for supported operating systems.
+
+    .PARAMETER UploadToGDriveParams
+        Parameters for uploading results to Google Drive.
+
+    .PARAMETER SendByMail
+        Send the results via email.
+
+    .PARAMETER Credential
+        Specifies credentials for remote connections.
+
+    .EXAMPLE
+        Get-LastUpdate -ComputerName Server01
+
+    .EXAMPLE
+        Get-LastUpdate -ComputerName Server01, Server02 -SendByMail
+
+    .NOTES
+        Part of PSPowerAdminTasks module.
+    #>
     [CmdletBinding(DefaultParameterSetName = "ByComputerName")]
     param
     (
@@ -50,12 +50,12 @@ function Get-LastUpdate
 
     )
 
-    begin
+    BEGIN
     {
         $result = @()
     }
 
-    process
+    PROCESS
     {
         switch ($PSCmdlet.ParameterSetName)
         {
@@ -91,7 +91,7 @@ function Get-LastUpdate
         }
     }
 
-    end
+    END
     {
         $TodayDate = (Get-Date -f yyyyMMdd_HHmmss)
         $FileName = "$($env:temp)\LastUpdateStatus_$($TodayDate).csv"
@@ -132,4 +132,3 @@ function Get-LastUpdate
 
     }
 }
-

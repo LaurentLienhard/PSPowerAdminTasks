@@ -1,8 +1,8 @@
 function Disable-CompromisedUser
 {
-<#
+    <#
     .SYNOPSIS
-    Disable compromised user
+        Disables compromised user accounts in Active Directory.
 
     .DESCRIPTION
     In case of compromission from some users, you can rapidly disable this users.
@@ -149,7 +149,7 @@ function Disable-CompromisedUser
     )
 
 
-    begin
+    BEGIN
     {
         if ($log)
         {
@@ -204,7 +204,7 @@ function Disable-CompromisedUser
         }
     }
 
-    process
+    PROCESS
     {
         $Arguments = @{}
         if ($PSBoundParameters.ContainsKey('Credential'))
@@ -235,7 +235,7 @@ function Disable-CompromisedUser
         }
     }
 
-    end
+    END
     {
         if ($log)
         {

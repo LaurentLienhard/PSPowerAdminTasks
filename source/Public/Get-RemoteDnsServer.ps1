@@ -1,21 +1,28 @@
-<#
-.SYNOPSIS
-Provides get remotednsserver functionality.
-
-.DESCRIPTION
-This function is used for administrative tasks. See Examples for usage.
-
-.PARAMETER ComputerName
-Specifies the target computer.
-
-.EXAMPLE
-Get-RemoteDnsServer -ComputerName Server01
-
-.NOTES
-This function is part of the PSPowerAdminTasks module.
-#>
 function Get-RemoteDnsServer
 {
+    <#
+    .SYNOPSIS
+        Retrieves DNS server configuration from remote computers.
+
+    .DESCRIPTION
+        This function retrieves DNS server configuration from remote computers using the COMPUTER class.
+        It validates computer existence in Active Directory and returns DNS servers and IPv4 address information.
+
+    .PARAMETER ComputerName
+        Specifies the target computer name or names.
+
+    .PARAMETER Credential
+        Specifies the credentials to use for the connection.
+
+    .EXAMPLE
+        Get-RemoteDnsServer -ComputerName Server01
+
+    .EXAMPLE
+        Get-RemoteDnsServer -ComputerName Server01, Server02 -Credential (Get-Credential)
+
+    .NOTES
+        This function is part of the PSPowerAdminTasks module.
+    #>
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
     param(
@@ -26,12 +33,12 @@ function Get-RemoteDnsServer
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    Begin
+    BEGIN
     {
         $AllResults = [System.Collections.Generic.List[PSObject]]::new()
     }
 
-    Process
+    PROCESS
     {
         foreach ($computer in $ComputerName)
         {
@@ -65,7 +72,7 @@ function Get-RemoteDnsServer
         }
     }
 
-    End
+    END
     {
         return $AllResults
     }

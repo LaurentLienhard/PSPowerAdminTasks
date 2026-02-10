@@ -64,7 +64,8 @@ function Get-KerberosTicketRC4 {
         [switch]$IncludeSuccess
     )
 
-    begin {
+    BEGIN
+    {
         # Calculate the start time for the event log query
         $startTime = (Get-Date).AddHours(-$Hours)
 
@@ -82,7 +83,8 @@ function Get-KerberosTicketRC4 {
         }
     }
 
-    process {
+    PROCESS
+    {
         foreach ($computer in $ComputerName) {
             try {
                 Write-Verbose "Querying $computer for Kerberos RC4 usage..."

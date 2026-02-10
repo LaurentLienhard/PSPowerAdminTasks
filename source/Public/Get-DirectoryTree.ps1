@@ -58,7 +58,7 @@
         [Switch]$SkipSize
     )
 
-    Begin
+    BEGIN
     {
         Write-Verbose ('[{0:O}] Starting Get-DirectoryTree' -f (Get-Date))
 
@@ -173,7 +173,7 @@
         }
     }
 
-    Process
+    PROCESS
     {
         try
         {

@@ -1,41 +1,51 @@
-<#
-.SYNOPSIS
-Lists all active domain servers that use specific DNS servers.
-
-.DESCRIPTION
-Retrieves all active computers in Active Directory and filters them based on configured DNS servers.
-This function connects to each server to retrieve its DNS configuration from the active network adapter.
-
-.PARAMETER DnsServer
-Specifies one or more DNS server IP addresses to search for. The function returns servers configured
-to use any of the specified DNS servers.
-
-.PARAMETER Server
-Specifies the domain controller to query. If not specified, the default domain controller is used.
-
-.PARAMETER Credential
-Specifies credentials to use for the query and remote operations. If not specified, the current
-user context is used.
-
-.EXAMPLE
-Get-ServersByDnsServer -DnsServer '10.1.3.12', '10.1.3.15'
-
-Returns all active servers in the domain that are configured to use either 10.1.3.12 or 10.1.3.15 as DNS servers.
-
-.EXAMPLE
-Get-ServersByDnsServer -DnsServer '10.1.3.12' -Credential (Get-Credential)
-
-Returns all servers using 10.1.3.12 as DNS, using specified credentials.
-
-.NOTES
-This function is part of the PSPowerAdminTasks module.
-Requires Active Directory module and network connectivity to target servers.
-#>
 function Get-ServersByDnsServer
 {
-    [CmdletBinding()]
+    <#
+        .SYNOPSIS
+            Lists all active domain servers that use specific DNS servers.
+
+        .DESCRIPTION
+            Retrieves all active computers in Active Directory and filters them based on configured DNS servers.
+            This function connects to each server to retrieve its DNS configuration from the active network adapter.
+            Optimized for large environments (1000+ servers) with parallel processing in PowerShell 7+.
+
+        .PARAMETER DnsServer
+            Specifies one or more DNS server IP addresses to search for. The function returns servers configured
+            to use any of the specified DNS servers.
+
+        .PARAMETER Server
+            Specifies the domain controller to query. If not specified, the default domain controller is used.
+
+        .PARAMETER Credential
+            Specifies credentials to use for the query and remote operations. If not specified, the current
+            user context is used.
+
+        .PARAMETER ThrottleLimit
+            Specifies the maximum number of parallel operations. Default is 32.
+            For high-latency networks or limited resources, reduce this value.
+            For fast networks with many cores, increase to 64 or more.
+
+        .PARAMETER TimeoutSeconds
+            Timeout in seconds for ping tests on each server. Default is 2 seconds.
+
+        .EXAMPLE
+            Get-ServersByDnsServer -DnsServer '10.1.3.12', '10.1.3.15'
+
+            Returns all active servers in the domain that are configured to use either 10.1.3.12 or 10.1.3.15 as DNS servers.
+
+        .EXAMPLE
+            Get-ServersByDnsServer -DnsServer '10.1.3.12' -ThrottleLimit 64
+
+            Scans with 64 parallel operations for faster results on high-bandwidth networks.
+
+        .EXAMPLE
+            Get-ServersByDnsServer -DnsServer '10.1.3.12' -WhatIf
+
+            Shows what servers would be returned without actually retrieving DNS information.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
         [ValidateNotNullOrEmpty()]
         [string[]]$DnsServer,
 
@@ -43,17 +53,42 @@ function Get-ServersByDnsServer
         [string]$Server,
 
         [Parameter(Mandatory = $false)]
-        [System.Management.Automation.PSCredential]$Credential
+        [System.Management.Automation.PSCredential]$Credential,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1, 256)]
+        [int]$ThrottleLimit = 32,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(1, 30)]
+        [int]$TimeoutSeconds = 2
     )
 
     BEGIN
     {
-        # Check module
-        if (-not (Get-Module -Name ActiveDirectory))
+        # Check PowerShell version for parallel processing capability
+        $useParallel = $PSVersionTable.PSVersion.Major -ge 7
+
+        if (-not $useParallel)
         {
-            Import-Module ActiveDirectory -ErrorAction Stop
+            Write-Verbose "PowerShell 7+ is recommended for optimal performance with large server counts (1000+)"
         }
 
+        # Validate AD module
+        if (-not (Get-Module -Name ActiveDirectory))
+        {
+            try
+            {
+                Import-Module ActiveDirectory -ErrorAction Stop
+            }
+            catch
+            {
+                Write-Error "Failed to import Active Directory module: $_"
+                return
+            }
+        }
+
+        # Build AD parameters
         $adParams = @{ ErrorAction = 'Stop' }
         if ($Server)
         {
@@ -64,88 +99,242 @@ function Get-ServersByDnsServer
             $adParams['Credential'] = $Credential
         }
 
-        $AllResults = [System.Collections.Generic.List[PSObject]]::new()
-
         Write-Verbose "Searching for servers with DNS servers: $($DnsServer -join ', ')"
+        Write-Verbose "Using ThrottleLimit: $ThrottleLimit, TimeoutSeconds: $TimeoutSeconds, Parallel: $useParallel"
     }
 
     PROCESS
     {
         try
         {
-            # Get all active computers in the domain
+            # Retrieve all active computers from AD
             Write-Verbose "Retrieving all active computers from Active Directory..."
-            $computers = Get-ADComputer -Filter { Enabled -eq $true } @adParams -Properties OperatingSystem, Description
+
+            $computers = Get-ADComputer -Filter { Enabled -eq $true } @adParams -Properties OperatingSystem, Description -ErrorAction Stop
+
+            if (-not $computers)
+            {
+                Write-Verbose "No active computers found in Active Directory"
+                return
+            }
 
             Write-Verbose "Found $($computers.Count) active computers. Checking DNS configuration..."
 
-            foreach ($computer in $computers)
+            if (-not $PSCmdlet.ShouldProcess("Scan $($computers.Count) servers for DNS configuration", "Scan servers"))
             {
-                try
-                {
-                    Write-Verbose "Processing $($computer.Name)..."
+                return
+            }
 
-                    # Create COMPUTER object to get DNS info
-                    if ($Credential)
-                    {
-                        $srvObject = [COMPUTER]::new($computer.Name, $Credential)
-                    }
-                    else
-                    {
-                        $srvObject = [COMPUTER]::new($computer.Name)
-                    }
+            $startTime = Get-Date
 
-                    # Check if computer is online and get DNS config
-                    if ($srvObject.Status -eq "Ping OK")
-                    {
-                        $srvObject.GetDnsConfig()
+            # Choose processing method based on PowerShell version
+            if ($useParallel)
+            {
+                $results = Invoke-ServerDnsCheck -Computers $computers -DnsServer $DnsServer -Credential $Credential `
+                    -TimeoutSeconds $TimeoutSeconds -ThrottleLimit $ThrottleLimit
+            }
+            else
+            {
+                $results = Invoke-ServerDnsCheckSequential -Computers $computers -DnsServer $DnsServer `
+                    -Credential $Credential -TimeoutSeconds $TimeoutSeconds
+            }
 
-                        # Parse DNS servers from the string (format: "IP1, IP2, IP3")
-                        if ($srvObject.DnsServers -and $srvObject.DnsServers -ne "None" -and $srvObject.DnsServers -ne "Error Retrieving Info")
-                        {
-                            $configuredDns = @($srvObject.DnsServers -split ',\s*' | ForEach-Object { $_.Trim() })
+            $endTime = Get-Date
+            $duration = $endTime - $startTime
 
-                            # Check if any of the configured DNS servers match our search criteria
-                            $matchingDns = $configuredDns | Where-Object { $_ -in $DnsServer }
-
-                            if ($matchingDns)
-                            {
-                                $resultObj = [PSCustomObject]@{
-                                    ComputerName      = $srvObject.Name
-                                    OperatingSystem   = $computer.OperatingSystem
-                                    Description       = $computer.Description
-                                    IPv4Address       = $srvObject.IPv4Address
-                                    ConfiguredDNS     = $srvObject.DnsServers
-                                    MatchingDNS       = $matchingDns -join ', '
-                                    Status            = $srvObject.Status
-                                    LastCheck         = $srvObject.CheckTime
-                                }
-
-                                $AllResults.Add($resultObj)
-                                Write-Verbose "✓ $($computer.Name) - Matches: $($matchingDns -join ', ')"
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Write-Verbose "✗ $($computer.Name) - Status: $($srvObject.Status)"
-                    }
-                }
-                catch
-                {
-                    Write-Verbose "Error processing $($computer.Name): $($_.Exception.Message)"
-                }
+            Write-Verbose "Scan completed in $($duration.TotalSeconds) seconds"
+            if ($results)
+            {
+                Write-Verbose "Found $($results.Count) servers matching the DNS criteria"
+                return $results
+            }
+            else
+            {
+                Write-Verbose "No servers found matching the DNS criteria"
             }
         }
         catch
         {
-            Write-Error "Fatal error retrieving computers from Active Directory: $_"
+            Write-Error "Fatal error retrieving servers: $($_.Exception.Message)"
         }
     }
 
     END
     {
-        Write-Verbose "Found $($AllResults.Count) servers matching the DNS criteria"
-        return $AllResults
     }
+}
+
+function Invoke-ServerDnsCheck
+{
+    <#
+        .SYNOPSIS
+            Helper function to check DNS configuration on servers using parallel processing.
+
+        .DESCRIPTION
+            Internal helper that performs parallel DNS checks on servers.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Computers,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$DnsServer,
+
+        [Parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]$Credential,
+
+        [Parameter(Mandatory = $false)]
+        [int]$TimeoutSeconds = 2,
+
+        [Parameter(Mandatory = $false)]
+        [int]$ThrottleLimit = 32
+    )
+
+    $computers | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
+        $computer = $_
+        $DnsServer = $using:DnsServer
+        $Credential = $using:Credential
+        $TimeoutSeconds = $using:TimeoutSeconds
+
+        try
+        {
+            # Quick ping test
+            if (-not (Test-Connection -ComputerName $computer.Name -Count 1 -TimeoutSeconds $TimeoutSeconds -ErrorAction SilentlyContinue))
+            {
+                return
+            }
+
+            # Create COMPUTER object for DNS retrieval
+            $srvObject = if ($Credential)
+            {
+                [COMPUTER]::new($computer.Name, $Credential)
+            }
+            else
+            {
+                [COMPUTER]::new($computer.Name)
+            }
+
+            if ($srvObject.Status -ne "Ping OK")
+            {
+                return
+            }
+
+            $srvObject.GetDnsConfig()
+
+            # Parse and validate DNS servers
+            if (-not $srvObject.DnsServers -or $srvObject.DnsServers -in @("None", "Error Retrieving Info"))
+            {
+                return
+            }
+
+            $configuredDns = @($srvObject.DnsServers -split ',\s*' | ForEach-Object { $_.Trim() })
+            $matchingDns = @($configuredDns | Where-Object { $_ -in $DnsServer })
+
+            if ($matchingDns.Count -gt 0)
+            {
+                [PSCustomObject]@{
+                    ComputerName    = $srvObject.Name
+                    OperatingSystem = $computer.OperatingSystem
+                    Description     = $computer.Description
+                    IPv4Address     = $srvObject.IPv4Address
+                    ConfiguredDNS   = $srvObject.DnsServers
+                    MatchingDNS     = $matchingDns -join ', '
+                    Status          = $srvObject.Status
+                    LastCheck       = $srvObject.CheckTime
+                }
+            }
+        }
+        catch
+        {
+            # Silently skip servers with errors in parallel context
+            return
+        }
+    } | Where-Object { $null -ne $_ }
+}
+
+function Invoke-ServerDnsCheckSequential
+{
+    <#
+        .SYNOPSIS
+            Helper function to check DNS configuration on servers sequentially.
+
+        .DESCRIPTION
+            Internal helper that performs sequential DNS checks on servers for PowerShell 5.1 compatibility.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Computers,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$DnsServer,
+
+        [Parameter(Mandatory = $false)]
+        [System.Management.Automation.PSCredential]$Credential,
+
+        [Parameter(Mandatory = $false)]
+        [int]$TimeoutSeconds = 2
+    )
+
+    $results = [System.Collections.Generic.List[PSObject]]::new()
+
+    foreach ($computer in $Computers)
+    {
+        try
+        {
+            # Quick ping test
+            if (-not (Test-Connection -ComputerName $computer.Name -Count 1 -TimeoutSeconds $TimeoutSeconds -ErrorAction SilentlyContinue))
+            {
+                continue
+            }
+
+            # Create COMPUTER object for DNS retrieval
+            $srvObject = if ($Credential)
+            {
+                [COMPUTER]::new($computer.Name, $Credential)
+            }
+            else
+            {
+                [COMPUTER]::new($computer.Name)
+            }
+
+            if ($srvObject.Status -ne "Ping OK")
+            {
+                continue
+            }
+
+            $srvObject.GetDnsConfig()
+
+            # Parse and validate DNS servers
+            if (-not $srvObject.DnsServers -or $srvObject.DnsServers -in @("None", "Error Retrieving Info"))
+            {
+                continue
+            }
+
+            $configuredDns = @($srvObject.DnsServers -split ',\s*' | ForEach-Object { $_.Trim() })
+            $matchingDns = @($configuredDns | Where-Object { $_ -in $DnsServer })
+
+            if ($matchingDns.Count -gt 0)
+            {
+                $results.Add([PSCustomObject]@{
+                    ComputerName    = $srvObject.Name
+                    OperatingSystem = $computer.OperatingSystem
+                    Description     = $computer.Description
+                    IPv4Address     = $srvObject.IPv4Address
+                    ConfiguredDNS   = $srvObject.DnsServers
+                    MatchingDNS     = $matchingDns -join ', '
+                    Status          = $srvObject.Status
+                    LastCheck       = $srvObject.CheckTime
+                })
+            }
+        }
+        catch
+        {
+            Write-Verbose "Error processing $($computer.Name): $($_.Exception.Message)"
+            continue
+        }
+    }
+
+    return $results
 }

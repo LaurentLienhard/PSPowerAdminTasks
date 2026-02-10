@@ -49,13 +49,13 @@ function Send-MailForAreboot
         [Parameter()][switch]$French
     )
 
-    begin
+    BEGIN
     {
         $result = @()
         $serversNeedingAttention = @()
     }
 
-    process
+    PROCESS
     {
         foreach ($computer in $ComputerName)
         {
@@ -113,7 +113,7 @@ function Send-MailForAreboot
         }
     }
 
-    end
+    END
     {
         if ($serversNeedingAttention.Count -gt 0)
         {

@@ -1,32 +1,32 @@
-<#
-.SYNOPSIS
-Finds duplicate DNS entries on Windows DNS servers.
-
-.DESCRIPTION
-This function searches for duplicate DNS records on a Windows DNS server.
-It returns objects containing IP address, record name, timestamp, and record type
-for any duplicate entries found.
-
-.PARAMETER ComputerName
-Specifies the target DNS server computer name.
-
-.PARAMETER ZoneName
-Specifies the DNS zone name to search. If not provided, searches all zones.
-
-.PARAMETER Credential
-Specifies a user account that has permissions to query the DNS server.
-
-.EXAMPLE
-Find-DnsDuplicateEntries -ComputerName "DNS01"
-
-.EXAMPLE
-Find-DnsDuplicateEntries -ComputerName "DNS01" -ZoneName "contoso.com"
-
-.NOTES
-This function is part of the PSPowerAdminTasks module.
-#>
 function Find-DnsDuplicateEntries
 {
+    <#
+    .SYNOPSIS
+        Finds duplicate DNS entries on Windows DNS servers.
+
+    .DESCRIPTION
+        This function searches for duplicate DNS records on a Windows DNS server.
+        It returns objects containing IP address, record name, timestamp, and record type
+        for any duplicate entries found.
+
+    .PARAMETER ComputerName
+        Specifies the target DNS server computer name.
+
+    .PARAMETER ZoneName
+        Specifies the DNS zone name to search. If not provided, searches all zones.
+
+    .PARAMETER Credential
+        Specifies a user account that has permissions to query the DNS server.
+
+    .EXAMPLE
+        Find-DnsDuplicateEntries -ComputerName "DNS01"
+
+    .EXAMPLE
+        Find-DnsDuplicateEntries -ComputerName "DNS01" -ZoneName "contoso.com"
+
+    .NOTES
+        This function is part of the PSPowerAdminTasks module.
+    #>
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '')]
@@ -41,12 +41,12 @@ function Find-DnsDuplicateEntries
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    Begin
+    BEGIN
     {
         $AllDuplicates = @()
     }
 
-    Process
+    PROCESS
     {
         foreach ($computer in $ComputerName)
         {
@@ -105,7 +105,7 @@ function Find-DnsDuplicateEntries
         }
     }
 
-    End
+    END
     {
         if ($AllDuplicates.Count -gt 0)
         {

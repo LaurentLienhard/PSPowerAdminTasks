@@ -31,7 +31,7 @@ This project uses the **Sampler** framework with **ModuleBuilder** and **InvokeB
 
 ### Testing
 
-The project uses **Pester** for testing with a code coverage threshold of 85%.
+The project uses **Pester** for testing with a code coverage threshold of 80%.
 
 ```powershell
 # Run all tests
@@ -42,6 +42,9 @@ The project uses **Pester** for testing with a code coverage threshold of 85%.
 
 # Exclude specific tags
 ./build.ps1 -Tasks test -PesterExcludeTag 'helpQuality'
+
+# Run a single test file directly (for rapid iteration during development)
+Invoke-Pester -Path tests/Unit/Public/Get-RemoteSoftware.tests.ps1 -Output Detailed
 ```
 
 Tests are organized in:
@@ -75,6 +78,51 @@ The build process:
 4. The root module file `source/PSPowerAdminTasks.psm1` is intentionally empty and rebuilt during build
 5. Exports are defined in `source/PSPowerAdminTasks.psd1` manifest
 
+### Code Style
+
+#### General Rules
+- **All code, functions, and documentation must be written in English**
+- Comment-based help must be placed **immediately after the function name** (inside the function, before `[CmdletBinding()]`)
+- **Every function (Public and Private) and every class must have a corresponding Pester test file**
+- Tests must use mocks for external dependencies (no real API/AD/network calls)
+- Each function/class must achieve **minimum 80% code coverage**
+- **Prefer `Write-Verbose` over `Write-Host` or `Write-Output`** for informational messages
+
+#### Function Structure
+- Use **uppercase** for `BEGIN`, `PROCESS`, `END` blocks
+- Use `[CmdletBinding()]` for all functions
+- Use `[OutputType()]` attribute when returning specific types
+- Support pipeline input with `ValueFromPipeline` and `ValueFromPipelineByPropertyName`
+- Use `[Parameter()]` attribute with `Mandatory`, `HelpMessage`, `Position` as needed
+- Use validation attributes: `[ValidateSet()]`, `[ValidateNotNullOrEmpty()]`, `[ValidateRange()]`
+
+#### Parameter Patterns
+- Credential parameter pattern (optional credentials):
+  ```powershell
+  [Parameter()]
+  [System.Management.Automation.PSCredential]$Credential
+  ```
+- Check for credential with `$PSBoundParameters.ContainsKey('Credential')`
+
+#### Coding Conventions
+- Use **splatting** for commands with multiple parameters:
+  ```powershell
+  $params = @{
+      ComputerName = $Computer
+      ErrorAction  = 'Stop'
+  }
+  Invoke-Command @params
+  ```
+- Use `[PSCustomObject]@{}` for structured output objects
+- Use `[System.Collections.Generic.List[T]]::new()` instead of `ArrayList` for collections
+- Use `try/catch` blocks with specific exception types when possible
+- Use `[SuppressMessageAttribute()]` to bypass PSScriptAnalyzer rules only when justified
+
+#### Class Structure
+- Use `#region` comments to organize sections: `#region <Properties>`, `#region <Constructor>`, `#region <Methods>`
+- Prefix class files with numbers for load order (e.g., `01_SITELINK.ps1`, `02_SITE.ps1`)
+- Use `HIDDEN` keyword for internal properties (e.g., credentials)
+
 ### Adding New Functions
 
 1. Create function file in `source/Public/` (exported) or `source/Private/` (internal)
@@ -85,17 +133,80 @@ The build process:
 
 Example function structure:
 ```powershell
-function Verb-Noun {
+function Verb-Noun
+{
+    <#
+        .SYNOPSIS
+            Brief description of what the function does.
+
+        .DESCRIPTION
+            Detailed description of the function.
+
+        .PARAMETER ParamName
+            Description of the parameter.
+
+        .PARAMETER Credential
+            Credentials for remote access.
+
+        .EXAMPLE
+            Verb-Noun -ParamName "Value"
+
+            Description of what this example does.
+    #>
     [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([PSCustomObject])]
     param(
-        [Parameter(Mandatory = $true)]
-        [String]$ParamName
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [ValidateNotNullOrEmpty()]
+        [String[]]$ParamName,
+
+        [Parameter()]
+        [System.Management.Automation.PSCredential]$Credential
     )
 
-    process {
-        if ($PSCmdlet.ShouldProcess($target)) {
-            # Implementation
+    BEGIN
+    {
+        Write-Verbose "Starting Verb-Noun"
+        $results = [System.Collections.Generic.List[PSCustomObject]]::new()
+    }
+
+    PROCESS
+    {
+        foreach ($item in $ParamName)
+        {
+            $params = @{
+                ComputerName = $item
+                ErrorAction  = 'Stop'
+            }
+
+            if ($PSBoundParameters.ContainsKey('Credential'))
+            {
+                $params['Credential'] = $Credential
+            }
+
+            try
+            {
+                if ($PSCmdlet.ShouldProcess($item, "Perform action"))
+                {
+                    # Implementation
+                    $result = [PSCustomObject]@{
+                        Name   = $item
+                        Status = 'Success'
+                    }
+                    $results.Add($result)
+                }
+            }
+            catch
+            {
+                Write-Error "Error processing $item : $($_.Exception.Message)"
+            }
         }
+    }
+
+    END
+    {
+        Write-Verbose "Completed Verb-Noun"
+        return $results
     }
 }
 ```
@@ -103,9 +214,56 @@ function Verb-Noun {
 ### Adding New Classes
 
 1. Create class file in `source/Classes/`
-2. Prefix filename with number to control load order (e.g., `3.MyClass.ps1`)
+2. Prefix filename with number to control load order (e.g., `03_MyClass.ps1`)
 3. Lower numbers load first - important for class dependencies
 4. Create corresponding test in `tests/Unit/Classes/`
+
+Example class structure:
+```powershell
+class MYCLASS
+{
+    #region <Properties>
+    [System.String]$Name
+    [System.String]$Status
+    HIDDEN [System.Management.Automation.PSCredential]$Credential
+    #endregion <Properties>
+
+    #region <Constructor>
+    MYCLASS()
+    {
+    }
+
+    MYCLASS([string]$Name)
+    {
+        $this.Name = $Name
+    }
+
+    MYCLASS([string]$Name, [System.Management.Automation.PSCredential]$Credential)
+    {
+        $this.Name = $Name
+        $this.Credential = $Credential
+    }
+    #endregion <Constructor>
+
+    #region <Methods>
+    [void] DoSomething()
+    {
+        # Implementation
+    }
+
+    [Boolean] TestSomething()
+    {
+        return $true
+    }
+
+    static [MYCLASS] FromADObject([object]$ADObject)
+    {
+        $instance = [MYCLASS]::new($ADObject.Name)
+        return $instance
+    }
+    #endregion <Methods>
+}
+```
 
 ## Version Management
 
@@ -147,6 +305,7 @@ Tests produce NUnit XML results and code coverage artifacts.
 5. Build module: `./build.ps1 -Tasks build`
 6. Run tests: `./build.ps1 -Tasks test`
 7. Built module is in `output/module/PSPowerAdminTasks/<version>/`
+8. To import and test locally: `Import-Module ./output/module/PSPowerAdminTasks/<version>/PSPowerAdminTasks.psd1 -Force`
 
 ## Testing Guidelines
 
@@ -154,7 +313,7 @@ Tests produce NUnit XML results and code coverage artifacts.
 - Mock external dependencies with `Mock -CommandName ... -ModuleName PSPowerAdminTasks`
 - Test both named parameters and pipeline input
 - Test `ShouldProcess` (`-WhatIf`) support where applicable
-- Maintain 85% code coverage threshold
+- Maintain 80% code coverage threshold
 
 ## Output Directory Structure
 

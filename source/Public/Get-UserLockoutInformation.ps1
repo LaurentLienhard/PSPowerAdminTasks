@@ -48,7 +48,7 @@ function Get-UserLockoutInformation
         [System.Management.Automation.Credential()]
         $Credential = [System.Management.Automation.PSCredential]::Empty
     )
-    Begin
+    BEGIN
     {
         Write-Verbose ('[{0:O}] Searching EventID : 4740 on Server : {1}' -f (get-date), $DC)
         $WinEventArguments = @{
@@ -77,7 +77,7 @@ function Get-UserLockoutInformation
         }
     }
 
-    Process
+    PROCESS
     {
         switch ($PSCmdlet.ParameterSetName)
         {
@@ -222,7 +222,7 @@ function Get-UserLockoutInformation
             }
         }
     }
-    End
+    END
     {
     }
 }

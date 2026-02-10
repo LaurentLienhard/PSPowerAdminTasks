@@ -1,7 +1,7 @@
 function Get-EffectiveADAccess
 {
-<#
-.SYNOPSIS
+    <#
+    .SYNOPSIS
     Retrieves effective permissions (ACL) for a user or group on an Active Directory object.
 
 .DESCRIPTION
@@ -52,7 +52,7 @@ function Get-EffectiveADAccess
         [Parameter()][pscredential]$Credential
     )
 
-    Begin
+    BEGIN
     {
         # --- HELPER: GUID to Readable Name Mapping ---
         $GuidMap = @{
@@ -71,7 +71,7 @@ function Get-EffectiveADAccess
         if ($PSBoundParameters['Credential']) { $ConnParams['Credential'] = $Credential }
     }
 
-    Process
+    PROCESS
     {
         try
         {

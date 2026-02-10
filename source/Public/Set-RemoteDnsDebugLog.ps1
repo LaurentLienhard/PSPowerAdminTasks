@@ -63,7 +63,7 @@
         [switch]$Disable
     )
 
-    process
+    PROCESS
     {
         Write-Verbose "Connecting to DNS server: $ComputerName"
 

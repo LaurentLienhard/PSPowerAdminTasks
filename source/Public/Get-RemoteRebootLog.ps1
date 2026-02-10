@@ -23,7 +23,7 @@
         [datetime]$StartTime = (Get-Date).AddDays(-30)
     )
 
-    begin
+    BEGIN
     {
         Write-Verbose "Début de la recherche des logs de reboot"
 
@@ -54,7 +54,7 @@
         }
     }
 
-    process
+    PROCESS
     {
         foreach ($computer in $ComputerName)
         {
@@ -205,8 +205,8 @@
         }
     }
 
-    end
+    END
     {
-        Write-Verbose "Fin de la recherche des logs de reboot"
+        Write-Verbose "Reboot log search completed"
     }
 }

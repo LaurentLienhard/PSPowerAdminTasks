@@ -1,5 +1,30 @@
 ﻿function Get-SiteTopologyAudit
 {
+    <#
+    .SYNOPSIS
+        Audits Active Directory site topology for potential issues.
+
+    .DESCRIPTION
+        This function analyzes Active Directory sites and services to identify:
+        - Sites without subnets
+        - Sites without domain controllers
+        - Orphan subnets (not associated with any site)
+
+    .PARAMETER Server
+        Specifies the Active Directory server to query.
+
+    .PARAMETER Credential
+        Specifies the credentials to use for the query.
+
+    .EXAMPLE
+        Get-SiteTopologyAudit
+
+    .EXAMPLE
+        Get-SiteTopologyAudit -Server "DC01" -Credential (Get-Credential)
+
+    .NOTES
+        Returns a SiteAuditReport object with the audit results.
+    #>
     [CmdletBinding()]
     [OutputType([SiteAuditReport])]
     param (
@@ -7,7 +32,7 @@
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    process
+    PROCESS
     {
         $Report = [SiteAuditReport]::new()
         $adParams = @{ ErrorAction = 'Stop' }

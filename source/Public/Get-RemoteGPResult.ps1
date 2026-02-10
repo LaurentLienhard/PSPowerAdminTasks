@@ -102,7 +102,7 @@ function Get-RemoteGPResult
         [int]$ThrottleLimit = 5
     )
 
-    begin
+    BEGIN
     {
         Write-Verbose "Starting Group Policy results retrieval"
 
@@ -110,7 +110,7 @@ function Get-RemoteGPResult
         $allComputers = [System.Collections.Generic.List[string]]::new()
     }
 
-    process
+    PROCESS
     {
         # Add computers to the list
         foreach ($computer in $ComputerName)
@@ -119,7 +119,7 @@ function Get-RemoteGPResult
         }
     }
 
-    end
+    END
     {
         Write-Verbose "Processing $($allComputers.Count) computer(s)"
 

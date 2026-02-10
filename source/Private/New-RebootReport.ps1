@@ -1,5 +1,26 @@
 ﻿function New-RebootReport
 {
+    <#
+    .SYNOPSIS
+        Generates an HTML report from reboot events.
+
+    .DESCRIPTION
+        This function creates a color-coded HTML report from reboot events.
+        Events are categorized by type: crash (red), user-initiated (orange), clean shutdown (green).
+
+    .PARAMETER RebootEvents
+        The reboot event objects to include in the report.
+
+    .PARAMETER FilePath
+        The path where the HTML report will be saved. Default is Desktop.
+
+    .EXAMPLE
+        Get-RemoteRebootLog -ComputerName "SERVER01" | New-RebootReport
+
+    .NOTES
+        This is an internal helper function.
+    #>
+    [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '')]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param(
@@ -9,7 +30,7 @@
         [string]$FilePath = "$env:USERPROFILE\Desktop\Rapport_Reboot.html"
     )
 
-    begin
+    BEGIN
     {
         # Début du HTML et définition du CSS
         $htmlHead = @"
@@ -79,7 +100,7 @@
 "@
     }
 
-    process
+    PROCESS
     {
         foreach ($evt in $RebootEvents)
         {
@@ -111,7 +132,7 @@
         }
     }
 
-    end
+    END
     {
         $htmlHead += @"
     </table>

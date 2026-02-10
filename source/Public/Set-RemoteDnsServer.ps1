@@ -1,21 +1,37 @@
-<#
-.SYNOPSIS
-Provides set remotednsserver functionality.
-
-.DESCRIPTION
-This function is used for administrative tasks. See Examples for usage.
-
-.PARAMETER ComputerName
-Specifies the target computer.
-
-.EXAMPLE
-Set-RemoteDnsServer -ComputerName Server01
-
-.NOTES
-This function is part of the PSPowerAdminTasks module.
-#>
 function Set-RemoteDnsServer
 {
+    <#
+    .SYNOPSIS
+        Sets or replaces DNS server addresses on remote computers.
+
+    .DESCRIPTION
+        This function sets or replaces DNS server configuration on remote computers using the COMPUTER class.
+        It supports two modes: set all DNS servers or replace a specific address.
+
+    .PARAMETER ComputerName
+        Specifies the target computer name or names.
+
+    .PARAMETER ServerAddresses
+        List of DNS server IP addresses to set (Parameter Set: All).
+
+    .PARAMETER OldAddress
+        DNS IP address to replace (Parameter Set: Replace).
+
+    .PARAMETER NewAddress
+        New DNS IP address (Parameter Set: Replace).
+
+    .PARAMETER Credential
+        Specifies the credentials to use for the connection.
+
+    .EXAMPLE
+        Set-RemoteDnsServer -ComputerName "SERVER01" -ServerAddresses "8.8.8.8","8.8.4.4"
+
+    .EXAMPLE
+        Set-RemoteDnsServer -ComputerName "SERVER01" -OldAddress "1.1.1.1" -NewAddress "8.8.8.8"
+
+    .NOTES
+        This function is part of the PSPowerAdminTasks module.
+    #>
     [CmdletBinding(DefaultParameterSetName = "All")]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseOutputTypeCorrectly', '')]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
@@ -37,20 +53,17 @@ function Set-RemoteDnsServer
         [System.Management.Automation.PSCredential]$Credential
     )
 
-    # 1. Initialisation
-    Begin
+    BEGIN
     {
         $AllResults = [System.Collections.Generic.List[PSObject]]::new()
     }
 
-    # 2. Traitement et accumulation
-    Process
+    PROCESS
     {
         foreach ($computer in $ComputerName)
         {
             Write-Verbose "Processing $computer via COMPUTER class..."
 
-            # Objet pour le rapport de cette ligne
             $reportItem = $null
 
             try
@@ -63,7 +76,6 @@ function Set-RemoteDnsServer
                 }
 
                 if ($srvObject.Status -ne "Ping OK") {
-                    # Si Ping KO, on note l'échec et on passe au suivant
                     $reportItem = [PSCustomObject]@{
                         ComputerName = $computer
                         Action       = "None"
@@ -87,7 +99,6 @@ function Set-RemoteDnsServer
                     }
                 }
 
-                # On crée le rapport de succès
                 $reportItem = [PSCustomObject]@{
                     ComputerName = $srvObject.Name
                     Action       = $actionLog
@@ -97,7 +108,6 @@ function Set-RemoteDnsServer
             }
             catch
             {
-                # On crée le rapport d'erreur
                 $reportItem = [PSCustomObject]@{
                     ComputerName = $computer
                     Action       = "Error"
@@ -106,13 +116,11 @@ function Set-RemoteDnsServer
                 }
             }
 
-            # Ajout à la liste globale
             if ($reportItem) { $AllResults.Add($reportItem) }
         }
     }
 
-    # 3. Restitution finale
-    End
+    END
     {
         return $AllResults
     }

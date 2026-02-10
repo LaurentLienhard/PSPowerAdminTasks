@@ -53,7 +53,7 @@
         [PSCredential]$Credential
     )
 
-    process
+    PROCESS
     {
         $Session = $null
         try

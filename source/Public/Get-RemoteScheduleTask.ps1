@@ -77,7 +77,8 @@
         [switch]$SkipTaskInfo
     )
 
-    Process {
+    PROCESS
+    {
         # 1. Parallel Processing Phase
         # We send the list of computers into parallel threads
         $ComputerName | ForEach-Object -Parallel {

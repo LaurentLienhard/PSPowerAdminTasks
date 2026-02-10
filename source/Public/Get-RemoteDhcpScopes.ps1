@@ -1,45 +1,31 @@
-<#
-.SYNOPSIS
-Manages dhcp information on remote computers.
-
-.DESCRIPTION
-This function performs dhcp management and retrieval tasks for remote computers.
-It supports multiple computers and includes error handling.
-
-.PARAMETER ComputerName
-Specifies the target computer name or names.
-
-.PARAMETER Credential
-Specifies the credentials to use for the connection.
-
-.EXAMPLE
-Get-RemoteDhcpScopes -ComputerName Server01
-
-.EXAMPLE
-Get-RemoteDhcpScopes -ComputerName Server01, Server02 -Credential (Get-Credential)
-
-.NOTES
-This function is part of the PSPowerAdminTasks module.
-Author: System Administrator
-Version: 1.0
-#>
 function Get-RemoteDhcpScopes
 {
     <#
     .SYNOPSIS
         Retrieves DHCP scopes, statistics, and options (Router, DNS, etc.) from a remote server.
+
     .DESCRIPTION
         Connects to the specified server via WinRM to list IPv4 scopes.
         For each scope, it retrieves:
         - IP Configuration (Range, Subnet Mask)
         - Usage Statistics (Free/Used IPs)
         - Main Options (3=Router, 6=DNS, 15=Domain)
+
     .PARAMETER ComputerName
         The target DHCP server name.
+
     .PARAMETER Credential
         Credentials to use for the remote connection.
-    #>
 
+    .EXAMPLE
+        Get-RemoteDhcpScopes -ComputerName Server01
+
+    .EXAMPLE
+        Get-RemoteDhcpScopes -ComputerName Server01 -Credential (Get-Credential)
+
+    .NOTES
+        This function is part of the PSPowerAdminTasks module.
+    #>
     [CmdletBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '')]
     param(
@@ -50,7 +36,7 @@ function Get-RemoteDhcpScopes
         [PSCredential]$Credential
     )
 
-    process
+    PROCESS
     {
         Write-Verbose "Connecting to DHCP server $ComputerName..."
 
@@ -107,38 +93,10 @@ function Get-RemoteDhcpScopes
                         EndRange    = $scope.EndRange.IPAddressToString
 
                         # DHCP Options
-                        Router      = if ($optRouter)
-                        {
-                            $optRouter
-                        }
-                        else
-                        {
-                            "N/A"
-                        }
-                        DNS         = if ($optDNS)
-                        {
-                            $optDNS
-                        }
-                        else
-                        {
-                            "N/A"
-                        }
-                        Domain      = if ($optDomain)
-                        {
-                            $optDomain
-                        }
-                        else
-                        {
-                            "N/A"
-                        }
-                        OtherOptIDs = if ($otherOptionsIDs)
-                        {
-                            $otherOptionsIDs
-                        }
-                        else
-                        {
-                            "-"
-                        }
+                        Router      = if ($optRouter) { $optRouter } else { "N/A" }
+                        DNS         = if ($optDNS) { $optDNS } else { "N/A" }
+                        Domain      = if ($optDomain) { $optDomain } else { "N/A" }
+                        OtherOptIDs = if ($otherOptionsIDs) { $otherOptionsIDs } else { "-" }
 
                         # Statistics
                         InUse       = $stats.InUse
