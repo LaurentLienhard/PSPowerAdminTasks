@@ -5,7 +5,11 @@ function Get-ServersByDnsServer
             Lists all active domain servers that use specific DNS servers.
 
         .DESCRIPTION
-            Retrieves all active computers in Active Directory and filters them based on configured DNS servers.
+            Scans servers for DNS configuration and returns those matching specified DNS servers.
+
+            By default, retrieves all active computers from Active Directory and filters them based on configured DNS servers.
+            Alternatively, you can provide a specific list of server names via the ComputerName parameter to scan only those servers.
+
             This function connects to each server to retrieve its DNS configuration from the active network adapter.
             Optimized for large environments (1000+ servers) with parallel processing in PowerShell 7+.
 
@@ -17,8 +21,14 @@ function Get-ServersByDnsServer
             to use any of the specified DNS servers (one or more matches).
             This parameter is mandatory.
 
+        .PARAMETER ComputerName
+            Specifies the computer names to scan for DNS configuration. If provided, only these servers are scanned
+            instead of querying Active Directory for all enabled computers.
+            Accepts pipeline input and supports wildcard patterns.
+
         .PARAMETER Server
             Specifies the domain controller to query. If not specified, the default domain controller is used.
+            Only used when ComputerName is not provided.
 
         .PARAMETER Credential
             Specifies credentials to use for the query and remote operations. If not specified, the current
@@ -70,6 +80,23 @@ function Get-ServersByDnsServer
 
             Shows what servers would be scanned without actually retrieving DNS information.
 
+        .EXAMPLE
+            Get-ServersByDnsServer -ComputerName 'Server01', 'Server02', 'Server03' -DnsServer '10.1.3.12'
+
+            Scans only the specified servers (Server01, Server02, Server03) instead of querying Active Directory,
+            and returns those that have 10.1.3.12 configured as a DNS server.
+
+        .EXAMPLE
+            'Server01', 'Server02' | Get-ServersByDnsServer -DnsServer '10.1.3.12'
+
+            Accepts computer names from pipeline and scans only those servers for DNS configuration.
+
+        .EXAMPLE
+            Get-ADComputer -Filter {Name -like 'Web*'} | Get-ServersByDnsServer -DnsServer '10.1.3.12'
+
+            Gets computers from AD using a custom filter and scans them for DNS configuration.
+            Demonstrates combining AD queries with selective DNS scanning.
+
         .NOTES
             - Returns always an array (@()), even if no servers match or an error occurs
             - Parallel processing requires PowerShell 7+; PS 5.1 uses sequential processing with a warning
@@ -81,6 +108,10 @@ function Get-ServersByDnsServer
         [Parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true)]
         [ValidateNotNullOrEmpty()]
         [string[]]$DnsServer,
+
+        [Parameter(Mandatory = $false, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [SupportsWildcards()]
+        [string[]]$ComputerName,
 
         [Parameter(Mandatory = $false)]
         [string]$Server,
@@ -143,18 +174,33 @@ function Get-ServersByDnsServer
     {
         try
         {
-            # Retrieve all active computers from AD
-            Write-Verbose "Retrieving all active computers from Active Directory..."
-
-            $computers = Get-ADComputer -Filter { Enabled -eq $true } @adParams -Properties OperatingSystem, Description -ErrorAction Stop
+            # Retrieve computers from provided list or from Active Directory
+            if ($PSBoundParameters.ContainsKey('ComputerName') -and $ComputerName)
+            {
+                Write-Verbose "Using provided computer list: $($ComputerName -join ', ')"
+                $computers = @()
+                foreach ($name in $ComputerName)
+                {
+                    $computers += [PSCustomObject]@{
+                        Name              = $name
+                        OperatingSystem   = $null
+                        Description       = $null
+                    }
+                }
+            }
+            else
+            {
+                Write-Verbose "Retrieving all active computers from Active Directory..."
+                $computers = Get-ADComputer -Filter { Enabled -eq $true } @adParams -Properties OperatingSystem, Description -ErrorAction Stop
+            }
 
             if (-not $computers)
             {
-                Write-Verbose "No active computers found in Active Directory"
+                Write-Verbose "No computers found to scan"
                 return @()
             }
 
-            Write-Verbose "Found $($computers.Count) active computers. Checking DNS configuration..."
+            Write-Verbose "Found $($computers.Count) computers. Checking DNS configuration..."
 
             if (-not $PSCmdlet.ShouldProcess("Scan $($computers.Count) servers for DNS configuration", "Scan servers"))
             {
