@@ -30,9 +30,13 @@ function Invoke-ServerDnsCheckSequential
     {
         try
         {
+            # Log processing of current computer
+            Write-Verbose "Processing server: $($computer.Name)"
+
             # Quick ping test
             if (-not (Test-Connection -ComputerName $computer.Name -Count 1 -TimeoutSeconds $TimeoutSeconds -ErrorAction SilentlyContinue))
             {
+                Write-Verbose "Server $($computer.Name) did not respond to ping"
                 continue
             }
 

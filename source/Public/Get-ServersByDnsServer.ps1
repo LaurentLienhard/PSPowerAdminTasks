@@ -66,6 +66,9 @@ function Get-ServersByDnsServer
 
     BEGIN
     {
+        # Initialize results array
+        $results = @()
+
         # Check PowerShell version for parallel processing capability
         $useParallel = $PSVersionTable.PSVersion.Major -ge 7
 
@@ -115,14 +118,14 @@ function Get-ServersByDnsServer
             if (-not $computers)
             {
                 Write-Verbose "No active computers found in Active Directory"
-                return
+                return @()
             }
 
             Write-Verbose "Found $($computers.Count) active computers. Checking DNS configuration..."
 
             if (-not $PSCmdlet.ShouldProcess("Scan $($computers.Count) servers for DNS configuration", "Scan servers"))
             {
-                return
+                return @()
             }
 
             $startTime = Get-Date
@@ -143,10 +146,9 @@ function Get-ServersByDnsServer
             $duration = $endTime - $startTime
 
             Write-Verbose "Scan completed in $($duration.TotalSeconds) seconds"
-            if ($results)
+            if ($results -and $results.Count -gt 0)
             {
                 Write-Verbose "Found $($results.Count) servers matching the DNS criteria"
-                return $results
             }
             else
             {
@@ -161,5 +163,6 @@ function Get-ServersByDnsServer
 
     END
     {
+        return $results
     }
 }
