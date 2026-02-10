@@ -278,6 +278,81 @@ function Verb-Noun
 }
 ```
 
+### Modifying Existing Functions
+
+When modifying an existing function, **always update the comment-based help** to keep documentation in sync with implementation:
+
+#### Required Documentation Updates
+1. **New Parameters**: Add `.PARAMETER` blocks for any new parameters
+   - Include clear descriptions of what the parameter does
+   - Document default values
+   - Explain the impact on function behavior
+
+2. **Modified Parameters**: Update existing `.PARAMETER` descriptions if behavior changes
+   - Note if parameter becomes mandatory/optional
+   - Update examples if parameter usage changes
+
+3. **Output Changes**: Update `.OUTPUTS` and `[OutputType()]` if return type or structure changes
+   - Document new properties in returned objects
+   - Explain how the change differs from previous behavior
+
+4. **Examples**: Add/update `.EXAMPLE` blocks to demonstrate new functionality
+   - Include examples showing new parameters in use
+   - Show the expected output format
+   - Add descriptive comments explaining what each example demonstrates
+
+5. **Breaking Changes**: Add `.NOTES` section if function signature or behavior significantly changes
+   - Highlight what changed and why
+   - Provide migration guidance for callers
+
+#### Example: Adding a Parameter and Updating Help
+```powershell
+# BEFORE: Simple function with basic help
+function Get-ServerInfo
+{
+    <#
+        .SYNOPSIS
+            Gets server information from Active Directory.
+        .PARAMETER ComputerName
+            Name of the server to query.
+        .EXAMPLE
+            Get-ServerInfo -ComputerName 'Server01'
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ComputerName
+    )
+}
+
+# AFTER: Added Verbose parameter - HELP UPDATED!
+function Get-ServerInfo
+{
+    <#
+        .SYNOPSIS
+            Gets server information from Active Directory with optional detailed output.
+        .PARAMETER ComputerName
+            Name of the server to query.
+        .PARAMETER Verbose
+            If specified, displays detailed processing information for each server scanned.
+            Default is $false.
+        .EXAMPLE
+            Get-ServerInfo -ComputerName 'Server01'
+
+            Gets basic server information from Active Directory.
+
+        .EXAMPLE
+            Get-ServerInfo -ComputerName 'Server01' -Verbose
+
+            Gets server information and displays detailed processing messages showing
+            which servers are being scanned and their status.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ComputerName
+    )
+}
+```
+
 ### Adding New Classes
 
 1. Create class file in `source/Classes/`
