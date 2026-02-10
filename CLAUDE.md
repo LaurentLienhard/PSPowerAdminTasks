@@ -118,10 +118,77 @@ The build process:
 - Use `try/catch` blocks with specific exception types when possible
 - Use `[SuppressMessageAttribute()]` to bypass PSScriptAnalyzer rules only when justified
 
+#### Code Formatting (VSCode PowerShell Extension)
+**Brace Placement:**
+- Opening braces on new line: `OpenBraceOnSameLine = false`
+- New line after opening brace: `true`
+- New line after closing brace: `true`
+- Whitespace before opening brace: `true`
+
+**Spacing & Operators:**
+- Whitespace before opening parenthesis: `true`
+- Whitespace around operators: `true`
+- Whitespace after separator: `true`
+- Align property value pairs: `true`
+
+**Pipeline Formatting:**
+- Pipeline indentation style: `IncreaseIndentationAfterEveryPipeline`
+- Single-line blocks ignored: `false`
+
+**File Formatting:**
+- Trim trailing whitespace: `true`
+- Trim final newlines: `true`
+- Insert final newline: `true`
+- PSScriptAnalyzer enabled: `true`
+
+**Example formatted code:**
+```powershell
+function Get-Example
+{
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $result = Get-Content -Path $Name |
+        Where-Object { $_ -match 'pattern' } |
+        Select-Object -Property Property1, Property2
+
+    return $result
+}
+```
+
 #### Class Structure
 - Use `#region` comments to organize sections: `#region <Properties>`, `#region <Constructor>`, `#region <Methods>`
 - Prefix class files with numbers for load order (e.g., `01_SITELINK.ps1`, `02_SITE.ps1`)
 - Use `HIDDEN` keyword for internal properties (e.g., credentials)
+
+#### Performance and Optimization
+- **All functions must be optimized for PowerShell 7+ capabilities**
+- **Parallel processing is required for operations processing multiple items** (10+ items):
+  - Use `ForEach-Object -Parallel -ThrottleLimit <N>` for batch operations
+  - Use appropriate ThrottleLimit values (default 32, range 1-256 based on resource constraints)
+  - Provide ThrottleLimit as configurable parameter for users
+- **Performance best practices**:
+  - Avoid sequential loops when parallel alternatives exist
+  - Use `[System.Collections.Generic.List[T]]` instead of `+=` for collections (100x faster)
+  - Cache AD queries when possible instead of repeated lookups
+  - Implement early filtering at AD level using LDAP filters, not post-processing
+  - Use `-ErrorAction SilentlyContinue` appropriately to skip non-critical errors without stopping
+  - Consider `-Timeout` parameters for network operations
+- **Fallback for PowerShell 5.1**:
+  - Functions should detect PowerShell version and use sequential processing as fallback
+  - Display warning when running on PS 5.1 for large datasets
+  - Example: `if ($PSVersionTable.PSVersion.Major -ge 7) { use parallel } else { use sequential }`
+- **Example parallel pattern**:
+  ```powershell
+  $results = $items | ForEach-Object -ThrottleLimit 32 -Parallel {
+      $item = $_
+      $sharedVar = $using:sharedVar
+      # Process item in parallel
+      [PSCustomObject]@{ Result = $item }
+  } | Where-Object { $null -ne $_ }
+  ```
 
 ### Adding New Functions
 
