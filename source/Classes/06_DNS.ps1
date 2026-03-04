@@ -183,6 +183,32 @@ class DNS
         return @($duplicates)
     }
 
+    [System.Object[]] GetZoneRecords([string]$ZoneName)
+    {
+        if ($this.Status -ne "Connected")
+        {
+            Write-Warning "DNS server is not connected. Cannot retrieve zone records."
+            return @()
+        }
+
+        Write-Verbose "Retrieving DNS records for zone: $ZoneName from $($this.ComputerName)"
+        try
+        {
+            $recordParams = @{
+                CimSession  = $this.CimSession
+                ZoneName    = $ZoneName
+                ErrorAction = 'Stop'
+            }
+            $records = Get-DnsServerResourceRecord @recordParams
+            return @($records)
+        }
+        catch
+        {
+            Write-Warning "Failed to retrieve records from zone $ZoneName : $($_.Exception.Message)"
+            return @()
+        }
+    }
+
     [void] Cleanup()
     {
         if ($null -ne $this.CimSession)
