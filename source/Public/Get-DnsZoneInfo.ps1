@@ -195,28 +195,45 @@ function Get-DnsZoneInfo
                             # Skip A/AAAA records that don't match IPScope
                             if ($PSBoundParameters.ContainsKey('IPScope') -and ($record.RecordType -in @('A', 'AAAA')))
                             {
-                                $ipData = if ($record.RecordType -eq 'A')
-                                {
-                                    $record.RecordData.IPv4Address.IPAddressToString
-                                }
-                                else
-                                {
-                                    $record.RecordData.IPv6Address.IPAddressToString
-                                }
+                                # Get the IP version of the current record
+                                $recordIPVersion = if ($record.RecordType -eq 'A') { "IPv4" } else { "IPv6" }
 
+                                # Check if any scope matches the record's IP version
+                                $matchingScopeExists = $false
                                 $isInScope = $false
+
                                 foreach ($scope in $IPScope)
                                 {
-                                    if (Test-IPInSubnet -IPAddress $ipData -Subnet $scope)
+                                    $scopeIPVersion = Get-IPVersion -IPAddressOrSubnet $scope
+                                    if ($scopeIPVersion -eq $recordIPVersion)
                                     {
-                                        $isInScope = $true
-                                        break
+                                        $matchingScopeExists = $true
+                                        $ipData = if ($record.RecordType -eq 'A')
+                                        {
+                                            $record.RecordData.IPv4Address.IPAddressToString
+                                        }
+                                        else
+                                        {
+                                            $record.RecordData.IPv6Address.IPAddressToString
+                                        }
+
+                                        if (Test-IPInSubnet -IPAddress $ipData -Subnet $scope)
+                                        {
+                                            $isInScope = $true
+                                            break
+                                        }
                                     }
                                 }
 
-                                if (-not $isInScope)
+                                # Skip if no matching scope version or IP not in scope
+                                if ($matchingScopeExists -and -not $isInScope)
                                 {
-                                    Write-Verbose "Skipping $($record.HostName) - IP $ipData not in specified scopes"
+                                    Write-Verbose "Skipping $($record.HostName) - IP not in specified scopes"
+                                    continue
+                                }
+                                elseif (-not $matchingScopeExists)
+                                {
+                                    Write-Verbose "Skipping $($record.HostName) ($recordIPVersion) - no matching $recordIPVersion scope provided"
                                     continue
                                 }
                             }

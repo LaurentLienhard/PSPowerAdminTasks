@@ -47,10 +47,10 @@ function Test-IPInSubnet
         $subnetAddress = [System.Net.IPAddress]::Parse($subnetParts[0])
         $prefixLength = [int]$subnetParts[1]
 
-        # Validate address type consistency
+        # Silently return false for address family mismatch (IPv4 vs IPv6)
+        # This allows filtering to skip records of different IP versions
         if ($ip.AddressFamily -ne $subnetAddress.AddressFamily)
         {
-            Write-Warning "IP address and subnet have different address families (IPv4 vs IPv6)"
             return $false
         }
 
