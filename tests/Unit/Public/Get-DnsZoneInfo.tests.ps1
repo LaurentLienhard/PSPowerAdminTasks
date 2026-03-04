@@ -127,6 +127,7 @@ Describe 'Get-DnsZoneInfo' {
             $result[0].PSObject.Properties.Name | Should -Contain "RecordType"
             $result[0].PSObject.Properties.Name | Should -Contain "RecordData"
             $result[0].PSObject.Properties.Name | Should -Contain "TTL"
+            $result[0].PSObject.Properties.Name | Should -Contain "IsStatic"
             $result[0].PSObject.Properties.Name | Should -Contain "Timestamp"
         }
 
@@ -142,16 +143,26 @@ Describe 'Get-DnsZoneInfo' {
             $mxRecord.RecordData | Should -Be "10 mail.contoso.com"
         }
 
-        It "Should set Timestamp to 'Static' for records without timestamp" {
+        It "Should set IsStatic to $true for records without timestamp" {
             $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName)
             $aRecord = $result | Where-Object { $_.RecordType -eq "A" }
+            $aRecord.IsStatic | Should -Be $true
             $aRecord.Timestamp | Should -Be "Static"
         }
 
-        It "Should return actual timestamp when available" {
+        It "Should set IsStatic to $false for records with timestamp" {
             $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName)
             $mxRecord = $result | Where-Object { $_.RecordType -eq "MX" }
+            $mxRecord.IsStatic | Should -Be $false
             $mxRecord.Timestamp | Should -Be ([datetime]"2024-01-01")
+        }
+
+        It "Should correctly identify static vs dynamic records" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName)
+            $staticRecords = $result | Where-Object { $_.IsStatic -eq $true }
+            $dynamicRecords = $result | Where-Object { $_.IsStatic -eq $false }
+            $staticRecords.Count | Should -Be 1
+            $dynamicRecords.Count | Should -Be 1
         }
     }
 

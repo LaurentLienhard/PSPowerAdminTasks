@@ -8,7 +8,8 @@ function Get-DnsZoneInfo
             This function retrieves detailed information about DNS zones and their records
             from a Windows DNS server. It can extract all records from a specific zone or
             from all zones on the server. Returns structured objects with record details
-            including record type, data, TTL, and timestamp information.
+            including record type, data, TTL, and information about whether records are
+            static or dynamically registered (DHCP).
 
         .PARAMETER ComputerName
             Specifies the DNS server computer name. Mandatory parameter.
@@ -39,6 +40,16 @@ function Get-DnsZoneInfo
             Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" -Credential (Get-Credential)
 
             Retrieves zone records with alternate credentials.
+
+        .EXAMPLE
+            Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" | Where-Object { $_.IsStatic -eq $true }
+
+            Retrieves only static DNS records from the contoso.com zone.
+
+        .EXAMPLE
+            Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" | Where-Object { $_.IsStatic -eq $false }
+
+            Retrieves only dynamic (DHCP-registered) DNS records from the contoso.com zone.
 
         .NOTES
             This function is part of the PSPowerAdminTasks module.
@@ -181,6 +192,7 @@ function Get-DnsZoneInfo
                                 RecordType   = $record.RecordType
                                 RecordData   = $recordData
                                 TTL          = $record.TTL
+                                IsStatic     = ($null -eq $record.Timestamp)
                                 Timestamp    = if ($null -eq $record.Timestamp) { "Static" } else { $record.Timestamp }
                             }
                         }
