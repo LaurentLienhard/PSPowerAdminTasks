@@ -37,6 +37,18 @@ Describe 'Get-DnsZoneInfo' {
         It "Should accept ThrottleLimit parameter" {
             { Get-DnsZoneInfo -ComputerName $mockComputerName -ThrottleLimit 64 -ErrorAction SilentlyContinue } | Should -Not -Throw
         }
+
+        It "Should accept RecordType parameter" {
+            { Get-DnsZoneInfo -ComputerName $mockComputerName -RecordType "A" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        }
+
+        It "Should accept multiple RecordTypes" {
+            { Get-DnsZoneInfo -ComputerName $mockComputerName -RecordType "A", "MX" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        }
+
+        It "Should accept RecordType ALL (default)" {
+            { Get-DnsZoneInfo -ComputerName $mockComputerName -RecordType "ALL" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        }
     }
 
     Context "Parameter validation" {
@@ -55,6 +67,18 @@ Describe 'Get-DnsZoneInfo' {
         It "Should accept valid ThrottleLimit values" {
             { Get-DnsZoneInfo -ComputerName $mockComputerName -ThrottleLimit 1 -ErrorAction SilentlyContinue } | Should -Not -Throw
             { Get-DnsZoneInfo -ComputerName $mockComputerName -ThrottleLimit 256 -ErrorAction SilentlyContinue } | Should -Not -Throw
+        }
+
+        It "Should validate RecordType parameter" {
+            { Get-DnsZoneInfo -ComputerName $mockComputerName -RecordType "INVALID" -ErrorAction Stop } | Should -Throw
+        }
+
+        It "Should accept valid RecordType values" {
+            $validTypes = @('A', 'AAAA', 'CNAME', 'MX', 'NS', 'SOA', 'SRV', 'TXT', 'PTR', 'CAA', 'TLSA', 'ALL')
+            foreach ($type in $validTypes)
+            {
+                { Get-DnsZoneInfo -ComputerName $mockComputerName -RecordType $type -ErrorAction SilentlyContinue } | Should -Not -Throw
+            }
         }
     }
 
@@ -163,6 +187,34 @@ Describe 'Get-DnsZoneInfo' {
             $dynamicRecords = $result | Where-Object { $_.IsStatic -eq $false }
             $staticRecords.Count | Should -Be 1
             $dynamicRecords.Count | Should -Be 1
+        }
+
+        It "Should filter by single RecordType" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -RecordType "A")
+            $result.Count | Should -Be 1
+            $result[0].RecordType | Should -Be "A"
+        }
+
+        It "Should filter by multiple RecordTypes" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -RecordType "A", "MX")
+            $result.Count | Should -Be 2
+            $result.RecordType | Should -Contain "A"
+            $result.RecordType | Should -Contain "MX"
+        }
+
+        It "Should return all records when RecordType is ALL" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -RecordType "ALL")
+            $result.Count | Should -Be 2
+        }
+
+        It "Should return all records when RecordType is not specified (default)" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName)
+            $result.Count | Should -Be 2
+        }
+
+        It "Should return empty when RecordType matches no records" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -RecordType "CNAME")
+            $result.Count | Should -Be 0
         }
     }
 

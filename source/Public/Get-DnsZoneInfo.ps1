@@ -26,6 +26,11 @@ function Get-DnsZoneInfo
             Specifies the maximum number of parallel operations. Default is 32.
             Only applicable when processing 10+ zones on PowerShell 7+.
 
+        .PARAMETER RecordType
+            Specifies the DNS record type(s) to retrieve. Valid values: A, AAAA, CNAME, MX, NS, SOA, SRV, TXT, PTR, CAA, TLSA, ALL.
+            Default is ALL, which retrieves all record types.
+            Use comma-separated values to retrieve multiple specific types.
+
         .EXAMPLE
             Get-DnsZoneInfo -ComputerName DNS01
 
@@ -51,6 +56,16 @@ function Get-DnsZoneInfo
 
             Retrieves only dynamic (DHCP-registered) DNS records from the contoso.com zone.
 
+        .EXAMPLE
+            Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" -RecordType "A"
+
+            Retrieves only A records from the contoso.com zone.
+
+        .EXAMPLE
+            Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" -RecordType "A", "AAAA", "MX"
+
+            Retrieves only A, AAAA, and MX records from the contoso.com zone.
+
         .NOTES
             This function is part of the PSPowerAdminTasks module.
             For PowerShell 7+, parallel processing is used for 10+ zones.
@@ -69,7 +84,11 @@ function Get-DnsZoneInfo
 
         [Parameter()]
         [ValidateRange(1, 256)]
-        [int]$ThrottleLimit = 32
+        [int]$ThrottleLimit = 32,
+
+        [Parameter()]
+        [ValidateSet('A', 'AAAA', 'CNAME', 'MX', 'NS', 'SOA', 'SRV', 'TXT', 'PTR', 'CAA', 'TLSA', 'ALL')]
+        [string[]]$RecordType = 'ALL'
     )
 
     BEGIN
@@ -139,8 +158,20 @@ function Get-DnsZoneInfo
 
                         Write-Verbose "Retrieved $($records.Count) records from zone $($zone.ZoneName)"
 
+                        # Filter records by RecordType if not ALL
+                        if ($RecordType -contains 'ALL')
+                        {
+                            $filteredRecords = $records
+                        }
+                        else
+                        {
+                            $filteredRecords = $records | Where-Object { $_.RecordType -in $RecordType }
+                        }
+
+                        Write-Verbose "After filtering: $($filteredRecords.Count) records match the specified type(s)"
+
                         # Convert records to custom objects with relevant information
-                        foreach ($record in $records)
+                        foreach ($record in $filteredRecords)
                         {
                             $recordData = $null
 
