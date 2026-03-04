@@ -31,6 +31,12 @@ function Get-DnsZoneInfo
             Default is ALL, which retrieves all record types.
             Use comma-separated values to retrieve multiple specific types.
 
+        .PARAMETER IPScope
+            Specifies one or more IP subnets in CIDR notation (e.g., 10.0.0.0/24, 192.168.0.0/16).
+            When specified, only A/AAAA records with IP addresses in these subnets are returned.
+            Other record types are not filtered by IPScope.
+            Use comma-separated values for multiple subnets.
+
         .EXAMPLE
             Get-DnsZoneInfo -ComputerName DNS01
 
@@ -66,6 +72,16 @@ function Get-DnsZoneInfo
 
             Retrieves only A, AAAA, and MX records from the contoso.com zone.
 
+        .EXAMPLE
+            Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" -IPScope "10.0.0.0/8"
+
+            Retrieves all records with IP addresses (A/AAAA records only) in the 10.0.0.0/8 subnet.
+
+        .EXAMPLE
+            Get-DnsZoneInfo -ComputerName DNS01 -ZoneName "contoso.com" -IPScope "10.0.0.0/8", "192.168.0.0/16"
+
+            Retrieves records with IP addresses in either the 10.0.0.0/8 or 192.168.0.0/16 subnets.
+
         .NOTES
             This function is part of the PSPowerAdminTasks module.
             For PowerShell 7+, parallel processing is used for 10+ zones.
@@ -88,7 +104,10 @@ function Get-DnsZoneInfo
 
         [Parameter()]
         [ValidateSet('A', 'AAAA', 'CNAME', 'MX', 'NS', 'SOA', 'SRV', 'TXT', 'PTR', 'CAA', 'TLSA', 'ALL')]
-        [string[]]$RecordType = 'ALL'
+        [string[]]$RecordType = 'ALL',
+
+        [Parameter()]
+        [string[]]$IPScope
     )
 
     BEGIN
@@ -173,6 +192,35 @@ function Get-DnsZoneInfo
                         # Convert records to custom objects with relevant information
                         foreach ($record in $filteredRecords)
                         {
+                            # Skip A/AAAA records that don't match IPScope
+                            if ($PSBoundParameters.ContainsKey('IPScope') -and ($record.RecordType -in @('A', 'AAAA')))
+                            {
+                                $ipData = if ($record.RecordType -eq 'A')
+                                {
+                                    $record.RecordData.IPv4Address.IPAddressToString
+                                }
+                                else
+                                {
+                                    $record.RecordData.IPv6Address.IPAddressToString
+                                }
+
+                                $isInScope = $false
+                                foreach ($scope in $IPScope)
+                                {
+                                    if (Test-IPInSubnet -IPAddress $ipData -Subnet $scope)
+                                    {
+                                        $isInScope = $true
+                                        break
+                                    }
+                                }
+
+                                if (-not $isInScope)
+                                {
+                                    Write-Verbose "Skipping $($record.HostName) - IP $ipData not in specified scopes"
+                                    continue
+                                }
+                            }
+
                             $recordData = $null
 
                             # Extract data based on record type

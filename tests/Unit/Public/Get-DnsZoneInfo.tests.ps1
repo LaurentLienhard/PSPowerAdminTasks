@@ -49,6 +49,14 @@ Describe 'Get-DnsZoneInfo' {
         It "Should accept RecordType ALL (default)" {
             { Get-DnsZoneInfo -ComputerName $mockComputerName -RecordType "ALL" -ErrorAction SilentlyContinue } | Should -Not -Throw
         }
+
+        It "Should accept IPScope parameter" {
+            { Get-DnsZoneInfo -ComputerName $mockComputerName -IPScope "10.0.0.0/8" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        }
+
+        It "Should accept multiple IPScopes" {
+            { Get-DnsZoneInfo -ComputerName $mockComputerName -IPScope "10.0.0.0/8", "192.168.0.0/16" -ErrorAction SilentlyContinue } | Should -Not -Throw
+        }
     }
 
     Context "Parameter validation" {
@@ -215,6 +223,30 @@ Describe 'Get-DnsZoneInfo' {
         It "Should return empty when RecordType matches no records" {
             $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -RecordType "CNAME")
             $result.Count | Should -Be 0
+        }
+
+        It "Should filter A records by IPScope" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -IPScope "192.168.1.0/24")
+            $result.Count | Should -Be 1
+            $result[0].RecordType | Should -Be "A"
+            $result[0].RecordData | Should -Be "192.168.1.10"
+        }
+
+        It "Should exclude A records outside IPScope" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -IPScope "10.0.0.0/8")
+            $result.Count | Should -Be 0
+        }
+
+        It "Should include A records in multiple IPScopes" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -IPScope "10.0.0.0/8", "192.168.1.0/24")
+            $result.Count | Should -Be 1
+            $result[0].RecordData | Should -Be "192.168.1.10"
+        }
+
+        It "Should not filter non-A/AAAA records by IPScope" {
+            $result = @(Get-DnsZoneInfo -ComputerName $mockComputerName -ZoneName $mockZoneName -RecordType "MX" -IPScope "10.0.0.0/8")
+            $result.Count | Should -Be 1
+            $result[0].RecordType | Should -Be "MX"
         }
     }
 
