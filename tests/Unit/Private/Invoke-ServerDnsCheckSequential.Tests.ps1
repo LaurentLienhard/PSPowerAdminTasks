@@ -56,19 +56,6 @@ Describe 'Invoke-ServerDnsCheckSequential' -Tag 'Unit' {
         }
     }
 
-    Context 'Execution - No Ping Response' {
-
-        It 'Should return an empty array when no computers respond to ping' {
-            $result = & (Get-Module $script:moduleName) {
-                $fakeComputers = @(
-                    [PSCustomObject]@{ Name = 'OFFLINE-SRV'; OperatingSystem = 'Windows Server 2019'; Description = '' }
-                )
-                Invoke-ServerDnsCheckSequential -Computers $fakeComputers -DnsServer '10.0.0.1' -TimeoutSeconds 1
-            }
-            $result | Should -BeNullOrEmpty
-        }
-    }
-
     Context 'Execution - Empty Computer List' {
 
         It 'Should return an empty result for an empty computer list' {
@@ -76,6 +63,34 @@ Describe 'Invoke-ServerDnsCheckSequential' -Tag 'Unit' {
                 Invoke-ServerDnsCheckSequential -Computers @() -DnsServer '10.0.0.1'
             }
             @($result).Count | Should -Be 0
+        }
+    }
+
+    Context 'Execution - No Ping Response' {
+
+        BeforeAll {
+            # Mock Test-Connection so no real network calls are made
+            Mock -CommandName Test-Connection -ModuleName $script:moduleName -MockWith { return $false }
+        }
+
+        It 'Should return an empty array when no computers respond to ping' {
+            $result = & (Get-Module $script:moduleName) {
+                $fakeComputers = @(
+                    [PSCustomObject]@{ Name = 'OFFLINE-SRV'; OperatingSystem = 'Windows Server 2019'; Description = '' }
+                )
+                Invoke-ServerDnsCheckSequential -Computers $fakeComputers -DnsServer '10.0.0.1'
+            }
+            @($result).Count | Should -Be 0
+        }
+
+        It 'Should call Test-Connection for each computer' {
+            & (Get-Module $script:moduleName) {
+                $fakeComputers = @(
+                    [PSCustomObject]@{ Name = 'OFFLINE-SRV'; OperatingSystem = 'Windows Server 2019'; Description = '' }
+                )
+                Invoke-ServerDnsCheckSequential -Computers $fakeComputers -DnsServer '10.0.0.1'
+            }
+            Should -Invoke -CommandName Test-Connection -ModuleName $script:moduleName -Times 1 -Exactly
         }
     }
 }

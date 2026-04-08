@@ -17,6 +17,19 @@ AfterAll {
 
 Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
 
+    BeforeAll {
+        # Start-RebootServerByGroup uses DynamicParam which calls Get-ADGroup at parameter-discovery
+        # time to build its ValidateSet. This mock must be at Describe level so it is active before
+        # any It block (and before any parameter inspection) triggers that AD query.
+        Mock -CommandName Get-ADGroup -ModuleName $script:moduleName -MockWith {
+            @(
+                [PSCustomObject]@{ Name = 'WSUS-Servers-2012' },
+                [PSCustomObject]@{ Name = 'WSUS-Servers-2019' }
+            )
+        }
+        Mock -CommandName Write-Host -ModuleName $script:moduleName -MockWith { }
+    }
+
     Context 'Function Availability' {
 
         It 'Should exist in the module' {
@@ -58,10 +71,6 @@ Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
     Context 'Execution - WhatIf (No Actual Reboot)' {
 
         BeforeAll {
-            Mock -CommandName Get-ADGroup -ModuleName $script:moduleName -MockWith {
-                [PSCustomObject]@{ Name = 'WSUS-Servers-2012' }
-            }
-
             Mock -CommandName Get-ADGroupMember -ModuleName $script:moduleName -MockWith {
                 @(
                     [PSCustomObject]@{
@@ -79,7 +88,6 @@ Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
             }
 
             Mock -CommandName Restart-Computer -ModuleName $script:moduleName -MockWith { }
-            Mock -CommandName Write-Host -ModuleName $script:moduleName -MockWith { }
         }
 
         It 'Should not call Restart-Computer when -WhatIf is specified' {
@@ -91,10 +99,6 @@ Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
     Context 'Execution - OS Filter' {
 
         BeforeAll {
-            Mock -CommandName Get-ADGroup -ModuleName $script:moduleName -MockWith {
-                [PSCustomObject]@{ Name = 'WSUS-Servers-2019' }
-            }
-
             Mock -CommandName Get-ADGroupMember -ModuleName $script:moduleName -MockWith {
                 @(
                     [PSCustomObject]@{
@@ -112,7 +116,6 @@ Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
             }
 
             Mock -CommandName Restart-Computer -ModuleName $script:moduleName -MockWith { }
-            Mock -CommandName Write-Host -ModuleName $script:moduleName -MockWith { }
         }
 
         It 'Should not reboot servers with OS not matching 2003/2008/2012' {
@@ -124,10 +127,6 @@ Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
     Context 'Execution - Successful Reboot' {
 
         BeforeAll {
-            Mock -CommandName Get-ADGroup -ModuleName $script:moduleName -MockWith {
-                [PSCustomObject]@{ Name = 'WSUS-Servers-2012' }
-            }
-
             Mock -CommandName Get-ADGroupMember -ModuleName $script:moduleName -MockWith {
                 @(
                     [PSCustomObject]@{
@@ -145,7 +144,6 @@ Describe 'Start-RebootServerByGroup' -Tag 'Unit' {
             }
 
             Mock -CommandName Restart-Computer -ModuleName $script:moduleName -MockWith { }
-            Mock -CommandName Write-Host -ModuleName $script:moduleName -MockWith { }
         }
 
         It 'Should call Restart-Computer for a matching server' {

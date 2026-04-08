@@ -62,15 +62,17 @@ Describe 'Get-SiteTopologyAudit' -Tag 'Unit' {
     Context 'Execution - All Sites Have Subnets and DCs' {
 
         BeforeAll {
+            # $script:moduleName is accessible inside MockWith scriptblocks (no $using: needed)
             Mock -CommandName Get-SiteInformation -ModuleName $script:moduleName -MockWith {
-                $site1 = & (Get-Module $using:moduleName) {
+                $mn = $script:moduleName
+                $site1 = & (Get-Module $mn) {
                     $s = [SITE]::new()
                     $s.Name = 'Site-A'
                     $s.Subnets.Add('10.0.1.0/24')
                     $s.DomainControllers.Add('DC01')
                     $s
                 }
-                $site2 = & (Get-Module $using:moduleName) {
+                $site2 = & (Get-Module $mn) {
                     $s = [SITE]::new()
                     $s.Name = 'Site-B'
                     $s.Subnets.Add('10.0.2.0/24')
@@ -108,10 +110,9 @@ Describe 'Get-SiteTopologyAudit' -Tag 'Unit' {
     Context 'Execution - Sites Without Subnets and DCs' {
 
         BeforeAll {
-            $script:moduleName = 'PSPowerAdminTasks'
-
             Mock -CommandName Get-SiteInformation -ModuleName $script:moduleName -MockWith {
-                $emptySite = & (Get-Module $using:moduleName) {
+                $mn = $script:moduleName
+                $emptySite = & (Get-Module $mn) {
                     $s = [SITE]::new()
                     $s.Name = 'EmptySite'
                     $s

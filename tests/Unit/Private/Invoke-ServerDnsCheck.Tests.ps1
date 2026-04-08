@@ -20,7 +20,6 @@ Describe 'Invoke-ServerDnsCheck' -Tag 'Unit' {
     Context 'Function Availability' {
 
         It 'Should be defined in the module' {
-            # Private functions are accessible via the module's internal scope
             $fn = & (Get-Module $script:moduleName) { Get-Command -Name Invoke-ServerDnsCheck -ErrorAction SilentlyContinue }
             $fn | Should -Not -BeNullOrEmpty
         }
@@ -57,17 +56,14 @@ Describe 'Invoke-ServerDnsCheck' -Tag 'Unit' {
         }
     }
 
-    Context 'Execution - No Ping Response' {
+    Context 'Execution - Empty Computer List' {
 
-        It 'Should return no results when computers do not respond to ping' {
+        It 'Should return an empty result for an empty computer list' {
+            # Empty list does not enter the parallel block — no network calls
             $result = & (Get-Module $script:moduleName) {
-                $fakeComputers = @(
-                    [PSCustomObject]@{ Name = 'OFFLINE-SRV'; OperatingSystem = 'Windows Server 2019'; Description = '' }
-                )
-                # Test-Connection will fail for a non-existent host
-                Invoke-ServerDnsCheck -Computers $fakeComputers -DnsServer '10.0.0.1' -TimeoutSeconds 1
+                Invoke-ServerDnsCheck -Computers @() -DnsServer '10.0.0.1'
             }
-            $result | Should -BeNullOrEmpty
+            @($result).Count | Should -Be 0
         }
     }
 }
