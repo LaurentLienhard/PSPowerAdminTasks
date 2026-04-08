@@ -62,15 +62,15 @@
     {
         Write-Verbose ('[{0:O}] Starting Get-DirectoryTree' -f (Get-Date))
 
-        # Helper pour l'affichage (taille humaine)
+        # Helper for display (human-readable size)
         function Get-HumanSize($Bytes) {
-            $sizes = "o", "Ko", "Mo", "Go", "To"
-            if (-not $Bytes -or $Bytes -eq 0) { return "0 o" }
+            $sizes = "B", "KB", "MB", "GB", "TB"
+            if (-not $Bytes -or $Bytes -eq 0) { return "0 B" }
             $i = [Math]::Floor([Math]::Log($Bytes, 1024))
             return "{0:N2} {1}" -f ($Bytes / [Math]::Pow(1024, $i)), $sizes[$i]
         }
 
-        # Paramètres pour Invoke-Command
+        # Parameters for Invoke-Command
         $InvokeParams = @{ ErrorAction = 'Stop' }
         if ($PSBoundParameters.ContainsKey('ComputerName') -and -not [string]::IsNullOrEmpty($ComputerName)) {
             $InvokeParams['ComputerName'] = $ComputerName
@@ -79,7 +79,7 @@
             $InvokeParams['Credential'] = $Credential
         }
 
-        # --- SCRIPTBLOCK PRINCIPAL (OPTIMISÉ) ---
+        # --- MAIN SCRIPTBLOCK (OPTIMIZED) ---
         $TreeBuilderScript = {
             param (
                 [String]$RootPath,
@@ -88,11 +88,11 @@
                 [Bool]$SkipSizeCalc
             )
 
-            # Parcours itératif avec Queue pour éviter la récursion profonde
+            # Iterative traversal with Queue to avoid deep recursion
             $queue = [System.Collections.Generic.Queue[PSObject]]::new()
             $sizeCache = @{}
 
-            # Ajouter le chemin racine
+            # Add root path
             $queue.Enqueue([PSCustomObject]@{
                 Path  = $RootPath
                 Depth = 1
@@ -101,22 +101,22 @@
             while ($queue.Count -gt 0) {
                 $current = $queue.Dequeue()
 
-                # Vérification de la profondeur
+                # Check depth limit
                 if ($MaxDepth -ne -1 -and $current.Depth -gt $MaxDepth) {
                     continue
                 }
 
                 try {
-                    # Récupération UNE SEULE FOIS des items du dossier
+                    # Retrieve items from folder ONLY ONCE
                     $items = @(Get-ChildItem -Path $current.Path -Force -ErrorAction SilentlyContinue)
 
                     if ($items.Count -eq 0) { continue }
 
                     foreach ($item in $items) {
-                        # Détection cross-platform du type (Directory vs File)
+                        # Cross-platform type detection (Directory vs File)
                         $isDirectory = ($item.Attributes -band [System.IO.FileAttributes]::Directory) -eq [System.IO.FileAttributes]::Directory
 
-                        # Filtrage selon la demande utilisateur
+                        # Filter according to user request
                         if ($ItemTypeFilter -eq 'Directories' -and -not $isDirectory) {
                             continue
                         }
@@ -124,7 +124,7 @@
                             continue
                         }
 
-                        # Calcul de taille optimisé (avec cache)
+                        # Optimized size calculation (with cache)
                         $itemSize = 0
                         if (-not $SkipSizeCalc) {
                             if ($isDirectory) {
@@ -146,7 +146,7 @@
                             }
                         }
 
-                        # Création optimisée de l'objet (propriétés ordonnées)
+                        # Optimized object creation (ordered properties)
                         [PSCustomObject]@{
                             Name          = $item.Name
                             FullName      = $item.FullName
@@ -157,7 +157,7 @@
                             Accessible    = $true
                         }
 
-                        # Ajouter à la queue si c'est un dossier (parcours en largeur)
+                        # Add to queue if it is a folder (breadth-first traversal)
                         if ($isDirectory) {
                             $queue.Enqueue([PSCustomObject]@{
                                 Path  = $item.FullName
@@ -179,7 +179,7 @@
         {
             if ($PSCmdlet.ShouldProcess($Path, 'Get directory tree'))
             {
-                # Vérification (si local)
+                # Validation (if local)
                 if (-not $InvokeParams.ContainsKey('ComputerName')) {
                     if (-not (Test-Path -Path $Path -ErrorAction SilentlyContinue)) {
                         Write-Error "Path not found: $Path"
@@ -187,7 +187,7 @@
                     }
                 }
 
-                # Exécution (Remote ou Local)
+                # Execution (Remote or Local)
                 if ($InvokeParams.ContainsKey('ComputerName'))
                 {
                     Write-Verbose "Remote execution on $ComputerName"
@@ -199,18 +199,18 @@
                     $results = & $TreeBuilderScript -RootPath $Path -MaxDepth $Depth -ItemTypeFilter $ItemType -SkipSizeCalc $SkipSize
                 }
 
-                # --- AFFICHAGE ---
+                # --- DISPLAY ---
                 if ($results)
                 {
                     if ($TreeView)
                     {
-                        Write-Information "`nArborescence pour : $Path" -InformationAction Continue
+                        Write-Information "`nDirectory tree for: $Path" -InformationAction Continue
                         if ($InvokeParams.ContainsKey('ComputerName')) {
                             Write-Information " (sur $($InvokeParams['ComputerName']))" -InformationAction Continue
                         }
                         Write-Information "----------------------------------------" -InformationAction Continue
 
-                        # Affichage direct en parcourant les résultats (sans sort global)
+                        # Direct display by iterating results (without global sort)
                         $resultList = @($results)
                         $resultList | Sort-Object Depth, FullName | ForEach-Object {
                             $Item = $_
@@ -238,7 +238,7 @@
                 }
                 else
                 {
-                    Write-Warning "Aucun élément trouvé ou accès refusé."
+                    Write-Warning "No items found or access denied."
                 }
             }
         }

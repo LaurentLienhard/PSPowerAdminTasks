@@ -27,12 +27,12 @@
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
         [object[]]$RebootEvents,
 
-        [string]$FilePath = "$env:USERPROFILE\Desktop\Rapport_Reboot.html"
+        [string]$FilePath = "$env:USERPROFILE\Desktop\Reboot_Report.html"
     )
 
     BEGIN
     {
-        # Début du HTML et définition du CSS
+        # HTML start and CSS definition
         $htmlHead = @"
 <html>
 <head>
@@ -47,13 +47,13 @@
     td { padding: 10px; border-bottom: 1px solid #eee; vertical-align: top; }
     tr:hover { background-color: #fafafa; }
 
-    /* Couleurs des lignes */
-    .crash { background-color: #ffe6e6; border-left: 6px solid #ff4d4d; }       /* Rouge */
+    /* Row colors */
+    .crash { background-color: #ffe6e6; border-left: 6px solid #ff4d4d; }       /* Red */
     .user-init { background-color: #fff4e6; border-left: 6px solid #ffa500; }   /* Orange */
-    .clean { background-color: #e6fffa; border-left: 6px solid #00cc99; }       /* Vert */
+    .clean { background-color: #e6fffa; border-left: 6px solid #00cc99; }       /* Green */
     .info { border-left: 6px solid #ccc; }
 
-    /* Styles de la légende */
+    /* Legend styles */
     .legend-container {
         display: flex;
         gap: 20px;
@@ -67,24 +67,24 @@
     .legend-item { display: flex; align-items: center; font-size: 0.9em; font-weight: 500; }
     .dot { width: 12px; height: 12px; display: inline-block; margin-right: 8px; border-radius: 3px; }
 
-    /* Couleurs des pastilles légende */
+    /* Legend dot colors */
     .dot-red { background-color: #ff4d4d; }
     .dot-orange { background-color: #ffa500; }
     .dot-green { background-color: #00cc99; }
 </style>
 </head>
 <body>
-    <h2>Rapport de Redémarrage Serveurs</h2>
+    <h2>Server Reboot Report</h2>
 
     <div class="legend-container">
         <div class="legend-item">
-            <span class="dot dot-red"></span> Arrêt imprévu / Crash (6008)
+            <span class="dot dot-red"></span> Unexpected Shutdown / Crash (6008)
         </div>
         <div class="legend-item">
-            <span class="dot dot-orange"></span> Initié par utilisateur / App (1074/1076)
+            <span class="dot dot-orange"></span> Initiated by User / App (1074/1076)
         </div>
         <div class="legend-item">
-            <span class="dot dot-green"></span> Arrêt service propre (6006)
+            <span class="dot dot-green"></span> Clean Service Stop (6006)
         </div>
     </div>
 
@@ -95,7 +95,7 @@
             <th>Type</th>
             <th>ID</th>
             <th>Utilisateur</th>
-            <th>Raison / Commentaire</th>
+            <th>Reason / Comment</th>
         </tr>
 "@
     }
@@ -104,18 +104,18 @@
     {
         foreach ($evt in $RebootEvents)
         {
-            # Détermination de la classe CSS selon l'EventID
+            # Determine CSS class based on EventID
             $rowClass = ""
             switch ($evt.EventID)
             {
-                6008 { $rowClass = "crash" }      # Crash
-                1074 { $rowClass = "user-init" }  # Initié
-                1076 { $rowClass = "user-init" }  # Initié (raison)
-                6006 { $rowClass = "clean" }      # Service stop
+                6008 { $rowClass = "crash" }      # Unexpected shutdown
+                1074 { $rowClass = "user-init" }  # User-initiated
+                1076 { $rowClass = "user-init" }  # User-initiated (reason)
+                6006 { $rowClass = "clean" }      # Clean service stop
                 Default { $rowClass = "info" }
             }
 
-            # Construction de la ligne du tableau
+            # Build table row
             $htmlHead += @"
         <tr class='$rowClass'>
             <td style="white-space:nowrap;">$($evt.TimeCreated)</td>
@@ -124,7 +124,7 @@
             <td>$($evt.EventID)</td>
             <td>$($evt.User)</td>
             <td>
-                <b>Raison:</b> $($evt.Reason)<br>
+                <b>Reason:</b> $($evt.Reason)<br>
                 <small style="color:#666;"><i>$($evt.Comment)</i></small>
             </td>
         </tr>
@@ -136,14 +136,14 @@
     {
         $htmlHead += @"
     </table>
-    <p style="text-align:right; font-size:0.8em; color:#888;">Généré le $(Get-Date)</p>
+    <p style="text-align:right; font-size:0.8em; color:#888;">Generated on $(Get-Date)</p>
 </body>
 </html>
 "@
         $htmlHead | Out-File -FilePath $FilePath -Encoding UTF8
-        Write-Host "Rapport avec légende généré ici : $FilePath" -ForegroundColor Cyan
+        Write-Host "Report with legend generated at: $FilePath" -ForegroundColor Cyan
 
-        # Ouvre automatiquement le rapport
+        # Automatically opens the report
         Invoke-Item $FilePath
     }
 }
