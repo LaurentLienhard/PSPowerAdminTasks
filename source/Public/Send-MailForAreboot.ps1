@@ -3,31 +3,9 @@ function Send-MailForAreboot
     <#
     .SYNOPSIS
         Sends an email notification for servers requiring a reboot or having pending updates.
-
     .DESCRIPTION
-        This function scans remote servers to retrieve the count of available software updates and checks the 'Pending Reboot' status.
-        It generates a formatted HTML email with specific maintenance instructions for the AutoStore grid.
-
-    .PARAMETER ComputerName
-        List of computer names or server addresses to scan.
-
-    .PARAMETER Recipient
-        Email address(es) of the recipient(s).
-
-    .PARAMETER SMTPServer
-        The SMTP server used for sending (Default: smtp.fmlogistic.fr).
-
-    .PARAMETER Port
-        The SMTP port (Default: 25).
-
-    .PARAMETER From
-        The sender's email address (Default: dsdpwinadm@fmlogistic.fr).
-
-    .PARAMETER Credential
-        The credentials required to connect to the remote servers.
-
-    .PARAMETER French
-        If specified, the email content will be translated into French using proper HTML entities for encoding safety.
+        Calculates the 3rd Wednesday of the month. If passed, moves to the next month.
+        Specific maintenance window: Stop at 13:00, approx 1h duration.
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -53,6 +31,24 @@ function Send-MailForAreboot
     {
         $result = @()
         $serversNeedingAttention = @()
+
+        # --- Logique de calcul du 3ème Mercredi ---
+        $GetThirdWednesday = {
+            param($Year, $Month)
+            $firstOfMonth = Get-Date -Year $Year -Month $Month -Day 1
+            $daysUntilWednesday = (([int][DayOfWeek]::Wednesday - [int]$firstOfMonth.DayOfWeek + 7) % 7)
+            return $firstOfMonth.AddDays($daysUntilWednesday + 14)
+        }
+
+        $today = Get-Date
+        $targetWednesday = &$GetThirdWednesday -Year $today.Year -Month $today.Month
+
+        # Bascule au mois suivant si la date du jour est après le mercredi cible
+        if ($today.Date -gt $targetWednesday.Date) {
+            $nextMonthDate = $today.AddMonths(1)
+            $targetWednesday = &$GetThirdWednesday -Year $nextMonthDate.Year -Month $nextMonthDate.Month
+        }
+        $dateMaintenance = $targetWednesday.ToString("dd/MM/yyyy")
     }
 
     PROCESS
@@ -83,10 +79,7 @@ function Send-MailForAreboot
                             return $searcher.Search("IsInstalled=0 and Type='Software' and IsHidden=0").Updates.Count
                         } -ErrorAction Stop
                     }
-                    catch
-                    {
-                        $updateCount = "Error"
-                    }
+                    catch { $updateCount = "Error" }
 
                     $serverData = [PSCustomObject]@{
                         ComputerName   = $computerObject.Name
@@ -117,28 +110,28 @@ function Send-MailForAreboot
     {
         if ($serversNeedingAttention.Count -gt 0)
         {
-            # Email Content Configuration
             if ($French)
             {
-                $Subject = "Action Requise : Maintenance sur $($serversNeedingAttention.Count) serveur(s)"
-                $Title = "Rapport de Maintenance Serveurs"
-                $Intro = "Les serveurs suivants pr&eacute;sentent des mises &agrave; jour en attente ou n&eacute;cessitent un red&eacute;marrage :"
-                $ThHost = "Serveur"
-                $ThUpd = "Updates"
-                $ThReb = "Reboot Requis"
-                $Action = "Merci d'arr&ecirc;ter la grille autostore avant Dimanche 9H pour maintenance."
-                $Action2 = "L'autostore pourra &ecirc;tre relanc&eacute; &agrave; partir de Dimanche &agrave; 12h."
+                $Subject = "Action Requise : Maintenance AutoStore - $dateMaintenance"
+                $Title    = "Rapport de Maintenance Serveurs"
+                $Intro    = "Les serveurs suivants pr&eacute;sentent des mises &agrave; jour en attente ou n&eacute;cessitent un red&eacute;marrage :"
+                $ThHost   = "Serveur"
+                $ThUpd    = "Updates"
+                $ThReb    = "Reboot Requis"
+                # Mise à jour des horaires (13h + 1h de durée)
+                $Action   = "La maintenance est pr&eacute;vue le <b>Mercredi $dateMaintenance</b>."
+                $Action2  = "Merci d'arr&ecirc;ter la grille AutoStore &agrave; <b>13:00</b>. Le red&eacute;marrage est estim&eacute; aux alentours de <b>14:00</b>."
             }
             else
             {
-                $Subject = "Action Required: Maintenance on $($serversNeedingAttention.Count) server(s)"
-                $Title = "Server Maintenance Report"
-                $Intro = "The following servers have pending updates or require a reboot:"
-                $ThHost = "Computer"
-                $ThUpd = "Updates"
-                $ThReb = "Reboot Needed"
-                $Action = "Please stop the AutoStore grid before Sunday 9:00 AM for maintenance."
-                $Action2 = "AutoStore can be restarted from Sunday at 12:00 PM."
+                $Subject = "Action Required: AutoStore Maintenance - $dateMaintenance"
+                $Title    = "Server Maintenance Report"
+                $Intro    = "The following servers have pending updates or require a reboot:"
+                $ThHost   = "Computer"
+                $ThUpd    = "Updates"
+                $ThReb    = "Reboot Needed"
+                $Action   = "Maintenance is scheduled for <b>Wednesday $dateMaintenance</b>."
+                $Action2  = "Please stop the AutoStore grid at <b>01:00 PM</b>. Restart is estimated around <b>02:00 PM</b>."
             }
 
             if ($PSCmdlet.ShouldProcess("Send email to $($Recipient -join ', ')"))
@@ -147,22 +140,8 @@ function Send-MailForAreboot
                 {
                     $tableRows = foreach ($server in $serversNeedingAttention)
                     {
-                        $rebootStyle = if ($server.RebootNeeded -eq 'YES')
-                        {
-                            "style='color: #c00; font-weight: bold;'"
-                        }
-                        else
-                        {
-                            ""
-                        }
-                        $updateStyle = if ($server.PendingUpdates -is [int] -and $server.PendingUpdates -gt 0)
-                        {
-                            "style='color: #e67e22; font-weight: bold;'"
-                        }
-                        else
-                        {
-                            ""
-                        }
+                        $rebootStyle = if ($server.RebootNeeded -eq 'YES') { "style='color: #c00; font-weight: bold;'" } else { "" }
+                        $updateStyle = if ($server.PendingUpdates -is [int] -and $server.PendingUpdates -gt 0) { "style='color: #e67e22; font-weight: bold;'" } else { "" }
 
                         "<tr>
                             <td>$($server.ComputerName)</td>
