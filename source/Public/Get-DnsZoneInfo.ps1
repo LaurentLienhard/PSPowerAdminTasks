@@ -281,16 +281,7 @@ function Get-DnsZoneInfo
                                 }
                             }
 
-                            [PSCustomObject]@{
-                                ComputerName = $computer
-                                ZoneName     = $zone.ZoneName
-                                HostName     = $record.HostName
-                                RecordType   = $record.RecordType
-                                RecordData   = $recordData
-                                TTL          = $record.TTL
-                                IsStatic     = ($null -eq $record.Timestamp)
-                                Timestamp    = if ($null -eq $record.Timestamp) { "Static" } else { $record.Timestamp }
-                            }
+                            [DNSRecord]::new($record, $computer, $zone.ZoneName)
                         }
                     }
                     catch
